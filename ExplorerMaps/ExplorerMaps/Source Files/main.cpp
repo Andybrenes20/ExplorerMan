@@ -81,8 +81,9 @@ int main()
 	glCullFace(GL_BACK);
 	glFrontFace(GL_CCW);
 
-	Camera camera(width, height, glm::vec3(0.0f, targetSceneRadius * 0.30f, targetSceneRadius * 1.05f));
-	camera.Orientation = glm::normalize(glm::vec3(0.0f) - camera.Position);
+	// Cámara posicionada en (112, -179, 600) mirando hacia la derecha (+X)
+	Camera camera(width, height, glm::vec3(112.0f, -179.0f, 600.0f));
+	camera.Orientation = glm::normalize(glm::vec3(1.0f, 0.0f, 0.0f));  // Mirando hacia la derecha
 	camera.speed = 320.0f;
 	float lastFrame = 0.0f;
 	float lastTitleUpdate = 0.0f;
