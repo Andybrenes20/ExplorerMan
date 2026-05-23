@@ -1,4 +1,5 @@
-﻿#include"Camara.h"
+﻿#include <cmath>
+#include"Camara.h"
 
 Camera::Camera(int width, int height, glm::vec3 position)
 {
@@ -170,4 +171,79 @@ void Camera::Inputs(GLFWwindow* window, float deltaTime)
 		glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
 		firstClick = true;
 	}
+
+	//Movilidad con mando
+	if (glfwJoystickIsGamepad(GLFW_JOYSTICK_1))
+	{
+		GLFWgamepadstate state;
+
+		if (glfwGetGamepadState(GLFW_JOYSTICK_1, &state))
+		{
+			const float deadzone = 0.20f;
+
+			auto dz = [deadzone](float value)
+			{
+				return std::abs(value) < deadzone ? 0.0f : value;
+			};
+
+			float leftX = dz(state.axes[GLFW_GAMEPAD_AXIS_LEFT_X]);
+			float leftY = dz(state.axes[GLFW_GAMEPAD_AXIS_LEFT_Y]);
+			float rightX = dz(state.axes[GLFW_GAMEPAD_AXIS_RIGHT_X]);
+			float rightY = dz(state.axes[GLFW_GAMEPAD_AXIS_RIGHT_Y]);
+
+			Position += currentSpeed * leftX * right;
+			Position += currentSpeed * -leftY * moveForward;
+
+			float lookSpeed = sensitivity * deltaTime * 1.7f;
+
+			glm::vec3 pitchAxis = glm::cross(forward, Up);
+			if (glm::length(pitchAxis) > 0.0001f)
+				pitchAxis = glm::normalize(pitchAxis);
+			else
+				pitchAxis = glm::vec3(1.0f, 0.0f, 0.0f);
+
+			glm::mat4 rotationX = glm::rotate(
+				glm::mat4(1.0f),
+				glm::radians(-rightY * lookSpeed),
+				pitchAxis
+			);
+
+			glm::vec3 newOrientation = glm::vec3(rotationX * glm::vec4(forward, 0.0f));
+
+			float orientationDot = glm::clamp(
+				glm::dot(glm::normalize(newOrientation), glm::normalize(Up)),
+				-1.0f,
+				1.0f
+			);
+
+			float orientationAngle = std::acos(orientationDot);
+
+			if (abs(orientationAngle - glm::radians(90.0f)) <= glm::radians(85.0f))
+			{
+				forward = glm::normalize(newOrientation);
+			}
+
+			glm::mat4 rotationY = glm::rotate(
+				glm::mat4(1.0f),
+				glm::radians(-rightX * lookSpeed),
+				Up
+			);
+
+			Orientation = glm::normalize(glm::vec3(rotationY * glm::vec4(forward, 0.0f)));
+
+			// Botón A / Cross: subir
+			if (state.buttons[GLFW_GAMEPAD_BUTTON_A] == GLFW_PRESS)
+			{
+				Position += currentSpeed * Up;
+			}
+
+			// Botón B / Circle: bajar
+			if (state.buttons[GLFW_GAMEPAD_BUTTON_B] == GLFW_PRESS)
+			{
+				Position += currentSpeed * -Up;
+			}
+		}
+	}
+
+
 }

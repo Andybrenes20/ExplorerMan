@@ -29,28 +29,28 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
     <ConfigurationType>Application</ConfigurationType>
     <UseDebugLibraries>true</UseDebugLibraries>
-    <PlatformToolset>v143</PlatformToolset>
     <CharacterSet>Unicode</CharacterSet>
+    <PlatformToolset>v142</PlatformToolset>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
     <ConfigurationType>Application</ConfigurationType>
     <UseDebugLibraries>false</UseDebugLibraries>
-    <PlatformToolset>v143</PlatformToolset>
     <WholeProgramOptimization>true</WholeProgramOptimization>
     <CharacterSet>Unicode</CharacterSet>
+    <PlatformToolset>v142</PlatformToolset>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
     <ConfigurationType>Application</ConfigurationType>
     <UseDebugLibraries>true</UseDebugLibraries>
-    <PlatformToolset>v143</PlatformToolset>
     <CharacterSet>Unicode</CharacterSet>
+    <PlatformToolset>v142</PlatformToolset>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
     <ConfigurationType>Application</ConfigurationType>
     <UseDebugLibraries>false</UseDebugLibraries>
-    <PlatformToolset>v143</PlatformToolset>
     <WholeProgramOptimization>true</WholeProgramOptimization>
     <CharacterSet>Unicode</CharacterSet>
+    <PlatformToolset>v142</PlatformToolset>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
   <ImportGroup Label="ExtensionSettings">
@@ -83,7 +83,7 @@
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <AdditionalLibraryDirectories>$(SolutionDir)dependencias\lib</AdditionalLibraryDirectories>
-      <AdditionalDependencies>glfw3.lib;opengl32.lib;user32.lib;gdi32.lib;shell32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>opengl32.lib;glew32.lib;glfw3.lib;assimp-vc143-mtd.lib;user32.lib;gdi32.lib;shell32.lib</AdditionalDependencies>
     </Link>
     <PostBuildEvent>
       <Command>xcopy /E /I /Y "$(ProjectDir)Shaders" "$(OutDir)Shaders"
@@ -105,7 +105,7 @@ xcopy /E /I /Y "$(ProjectDir)modelos" "$(OutDir)modelos"</Command>
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <AdditionalLibraryDirectories>$(SolutionDir)dependencias\lib</AdditionalLibraryDirectories>
-      <AdditionalDependencies>glfw3.lib;opengl32.lib;user32.lib;gdi32.lib;shell32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>opengl32.lib;glew32.lib;glfw3.lib;assimp-vc143-mtd.lib;user32.lib;gdi32.lib;shell32.lib</AdditionalDependencies>
     </Link>
     <PostBuildEvent>
       <Command>xcopy /E /I /Y "$(ProjectDir)Shaders" "$(OutDir)Shaders"
@@ -125,7 +125,7 @@ xcopy /E /I /Y "$(ProjectDir)modelos" "$(OutDir)modelos"</Command>
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <AdditionalLibraryDirectories>$(SolutionDir)dependencias\lib</AdditionalLibraryDirectories>
-      <AdditionalDependencies>opengl32.lib;glew32.lib;glfw3.lib;assimp-vc143-mtd.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>opengl32.lib;glew32.lib;glfw3.lib;assimp-vc143-mtd.lib;user32.lib;gdi32.lib;shell32.lib</AdditionalDependencies>
     </Link>
     <PostBuildEvent>
       <Command>xcopy /E /I /Y "$(ProjectDir)Shaders" "$(OutDir)Shaders"
@@ -147,7 +147,7 @@ xcopy /E /I /Y "$(ProjectDir)modelos" "$(OutDir)modelos"</Command>
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <AdditionalLibraryDirectories>$(SolutionDir)dependencias\lib</AdditionalLibraryDirectories>
-      <AdditionalDependencies>opengl32.lib;glew32.lib;glfw3.lib;assimp-vc143-mtd.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>opengl32.lib;glew32.lib;glfw3.lib;assimp-vc143-mtd.lib;user32.lib;gdi32.lib;shell32.lib</AdditionalDependencies>
     </Link>
     <PostBuildEvent>
       <Command>xcopy /E /I /Y "$(ProjectDir)Shaders" "$(OutDir)Shaders"
@@ -184,6 +184,10 @@ xcopy /E /I /Y "$(ProjectDir)modelos" "$(OutDir)modelos"</Command>
     <ClInclude Include="Source Files\stb_image.h" />
   </ItemGroup>
   <ItemGroup>
+    <None Include="assimp-vc143-mt.pdb" />
+    <None Include="assimp-vc143-mtd.dll" />
+    <None Include="glew32.dll" />
+    <None Include="glfw3.dll" />
     <None Include="Shaders\default.frag" />
     <None Include="Shaders\default.vert" />
     <None Include="Shaders\light.frag" />
