@@ -1,249 +1,321 @@
 ﻿#include <cmath>
-#include"Camara.h"
+#include <iostream>
+#include "Camara.h"
 
 Camera::Camera(int width, int height, glm::vec3 position)
 {
-	Camera::width = width;
-	Camera::height = height;
-	Position = position;
+    Camera::width = width;
+    Camera::height = height;
+    Position = position;
 }
 
 void Camera::updateMatrix(float FOVdeg, float nearPlane, float farPlane)
 {
-	// Initializes matrices since otherwise they will be the null matrix
-	glm::mat4 view = glm::mat4(1.0f);
-	glm::mat4 projection = glm::mat4(1.0f);
+    // Initializes matrices since otherwise they will be the null matrix
+    glm::mat4 view = glm::mat4(1.0f);
+    glm::mat4 projection = glm::mat4(1.0f);
 
-	// Makes camera look in the right direction from the right position
-	view = glm::lookAt(Position, Position + Orientation, Up);
-	// Adds perspective to the scene
-	projection = glm::perspective(glm::radians(FOVdeg), (float)width / height, nearPlane, farPlane);
+    // Makes camera look in the right direction from the right position
+    view = glm::lookAt(Position, Position + Orientation, Up);
+    // Adds perspective to the scene
+    projection = glm::perspective(glm::radians(FOVdeg), (float)width / height, nearPlane, farPlane);
 
-	// Sets new camera matrix
-	cameraMatrix = projection * view;
+    // Sets new camera matrix
+    cameraMatrix = projection * view;
 }
 
 void Camera::Matrix(Shader& shader, const char* uniform)
 {
-	// Exports camera matrix
-	glUniformMatrix4fv(shader.GetUniformLocation(uniform), 1, GL_FALSE, glm::value_ptr(cameraMatrix));
+    // Exports camera matrix
+    glUniformMatrix4fv(shader.GetUniformLocation(uniform), 1, GL_FALSE, glm::value_ptr(cameraMatrix));
 }
 
 glm::mat4 Camera::GetViewMatrix() const
 {
-	return glm::lookAt(Position, Position + Orientation, Up);
+    return glm::lookAt(Position, Position + Orientation, Up);
 }
 
 glm::mat4 Camera::GetProjectionMatrix(float FOVdeg, float nearPlane, float farPlane) const
 {
-	return glm::perspective(glm::radians(FOVdeg), static_cast<float>(width) / static_cast<float>(height), nearPlane, farPlane);
+    return glm::perspective(glm::radians(FOVdeg), static_cast<float>(width) / static_cast<float>(height), nearPlane, farPlane);
 }
 
 void Camera::Inputs(GLFWwindow* window, float deltaTime)
 {
-	if (glfwGetKey(window, GLFW_KEY_F) == GLFW_PRESS)
-	{
-		if (!toggleLatch)
-		{
-			flyMode = !flyMode;
-			toggleLatch = true;
-		}
-	}
-	else
-	{
-		toggleLatch = false;
-	}
+    // Toggle fly mode with F key
+    if (glfwGetKey(window, GLFW_KEY_F) == GLFW_PRESS)
+    {
+        if (!toggleLatch)
+        {
+            flyMode = !flyMode;
+            toggleLatch = true;
+        }
+    }
+    else
+    {
+        toggleLatch = false;
+    }
 
-	float currentSpeed = speed * deltaTime;
-	if (glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS)
-	{
-		currentSpeed *= 2.2f;
-	}
+    float currentSpeed = speed * deltaTime;
+    if (glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS)
+    {
+        currentSpeed *= 2.2f;
+    }
 
-	if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS)
-	{
-		flyMode = true;
-	}
+    if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS)
+    {
+        flyMode = true;
+    }
 
-	glm::vec3 forward = Orientation;
-	if (glm::length(forward) > 0.0001f)
-	{
-		forward = glm::normalize(forward);
-	}
-	else
-	{
-		forward = glm::vec3(0.0f, 0.0f, -1.0f);
-	}
+    // Calculate movement directions based on Orientation
+    glm::vec3 forward = Orientation;
+    if (glm::length(forward) > 0.0001f)
+    {
+        forward = glm::normalize(forward);
+    }
+    else
+    {
+        forward = glm::vec3(0.0f, 0.0f, -1.0f);
+    }
 
-	glm::vec3 moveForward = forward;
-	if (!flyMode)
-	{
-		moveForward = glm::vec3(forward.x, 0.0f, forward.z);
-		if (glm::length(moveForward) > 0.0001f)
-		{
-			moveForward = glm::normalize(moveForward);
-		}
-		else
-		{
-			moveForward = glm::vec3(0.0f, 0.0f, -1.0f);
-		}
-	}
+    glm::vec3 moveForward = forward;
+    if (!flyMode)
+    {
+        moveForward = glm::vec3(forward.x, 0.0f, forward.z);
+        if (glm::length(moveForward) > 0.0001f)
+        {
+            moveForward = glm::normalize(moveForward);
+        }
+        else
+        {
+            moveForward = glm::vec3(0.0f, 0.0f, -1.0f);
+        }
+    }
 
-	glm::vec3 right = glm::cross(moveForward, Up);
-	if (glm::length(right) > 0.0001f)
-	{
-		right = glm::normalize(right);
-	}
-	else
-	{
-		right = glm::vec3(1.0f, 0.0f, 0.0f);
-	}
+    glm::vec3 right = glm::cross(moveForward, Up);
+    if (glm::length(right) > 0.0001f)
+    {
+        right = glm::normalize(right);
+    }
+    else
+    {
+        right = glm::vec3(1.0f, 0.0f, 0.0f);
+    }
 
-	if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
-	{
-		Position += currentSpeed * moveForward;
-	}
-	if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS)
-	{
-		Position += currentSpeed * -right;
-	}
-	if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS)
-	{
-		Position += currentSpeed * -moveForward;
-	}
-	if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
-	{
-		Position += currentSpeed * right;
-	}
-	if (flyMode && glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS)
-	{
-		Position += currentSpeed * Up;
-	}
-	if (flyMode && glfwGetKey(window, GLFW_KEY_LEFT_CONTROL) == GLFW_PRESS)
-	{
-		Position += currentSpeed * -Up;
-	}
+    // WASD movement
+    if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
+    {
+        Position += currentSpeed * moveForward;
+    }
+    if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS)
+    {
+        Position += currentSpeed * -right;
+    }
+    if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS)
+    {
+        Position += currentSpeed * -moveForward;
+    }
+    if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
+    {
+        Position += currentSpeed * right;
+    }
+    if (flyMode && glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS)
+    {
+        Position += currentSpeed * Up;
+    }
+    if (flyMode && glfwGetKey(window, GLFW_KEY_LEFT_CONTROL) == GLFW_PRESS)
+    {
+        Position += currentSpeed * -Up;
+    }
 
-	if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS)
-	{
-		glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_HIDDEN);
+    // Mouse look
+    if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS)
+    {
+        glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_HIDDEN);
 
-		if (firstClick)
-		{
-			glfwSetCursorPos(window, (width / 2), (height / 2));
-			firstClick = false;
-		}
+        if (firstClick)
+        {
+            glfwSetCursorPos(window, (width / 2), (height / 2));
+            firstClick = false;
+        }
 
-		double mouseX;
-		double mouseY;
-		glfwGetCursorPos(window, &mouseX, &mouseY);
+        double mouseX;
+        double mouseY;
+        glfwGetCursorPos(window, &mouseX, &mouseY);
 
-		float rotX = sensitivity * (float)(mouseY - (height / 2)) / height;
-		float rotY = sensitivity * (float)(mouseX - (width / 2)) / width;
+        float rotX = sensitivity * (float)(mouseY - (height / 2)) / height;
+        float rotY = sensitivity * (float)(mouseX - (width / 2)) / width;
 
-		glm::vec3 pitchAxis = glm::cross(forward, Up);
-		if (glm::length(pitchAxis) > 0.0001f)
-		{
-			pitchAxis = glm::normalize(pitchAxis);
-		}
-		else
-		{
-			pitchAxis = glm::vec3(1.0f, 0.0f, 0.0f);
-		}
+        // Pitch rotation (up/down)
+        glm::vec3 pitchAxis = glm::cross(forward, Up);
+        if (glm::length(pitchAxis) > 0.0001f)
+        {
+            pitchAxis = glm::normalize(pitchAxis);
+        }
+        else
+        {
+            pitchAxis = glm::vec3(1.0f, 0.0f, 0.0f);
+        }
 
-		glm::mat4 rotationMatrixX = glm::rotate(glm::mat4(1.0f), glm::radians(-rotX), pitchAxis);
-		glm::vec3 newOrientation = glm::vec3(rotationMatrixX * glm::vec4(forward, 0.0f));
+        glm::mat4 rotationMatrixX = glm::rotate(glm::mat4(1.0f), glm::radians(-rotX), pitchAxis);
+        glm::vec3 newOrientation = glm::vec3(rotationMatrixX * glm::vec4(forward, 0.0f));
 
-		float orientationDot = glm::clamp(glm::dot(glm::normalize(newOrientation), glm::normalize(Up)), -1.0f, 1.0f);
-		float orientationAngle = std::acos(orientationDot);
-		if (abs(orientationAngle - glm::radians(90.0f)) <= glm::radians(85.0f))
-		{
-			forward = glm::normalize(newOrientation);
-		}
+        float orientationDot = glm::clamp(glm::dot(glm::normalize(newOrientation), glm::normalize(Up)), -1.0f, 1.0f);
+        float orientationAngle = std::acos(orientationDot);
+        if (abs(orientationAngle - glm::radians(90.0f)) <= glm::radians(85.0f))
+        {
+            forward = glm::normalize(newOrientation);
+        }
 
-		glm::mat4 rotationMatrixY = glm::rotate(glm::mat4(1.0f), glm::radians(-rotY), Up);
-		Orientation = glm::normalize(glm::vec3(rotationMatrixY * glm::vec4(forward, 0.0f)));
+        // Yaw rotation (left/right)
+        glm::mat4 rotationMatrixY = glm::rotate(glm::mat4(1.0f), glm::radians(-rotY), Up);
+        Orientation = glm::normalize(glm::vec3(rotationMatrixY * glm::vec4(forward, 0.0f)));
 
-		glfwSetCursorPos(window, (width / 2), (height / 2));
-	}
-	else if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_RELEASE)
-	{
-		glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
-		firstClick = true;
-	}
+        // Also update forward for the next frame
+        forward = Orientation;
 
-	//Movilidad con mando
-	if (glfwJoystickIsGamepad(GLFW_JOYSTICK_1))
-	{
-		GLFWgamepadstate state;
+        glfwSetCursorPos(window, (width / 2), (height / 2));
+    }
+    else if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_RELEASE)
+    {
+        glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+        firstClick = true;
+    }
 
-		if (glfwGetGamepadState(GLFW_JOYSTICK_1, &state))
-		{
-			const float deadzone = 0.20f;
+    // ==========================================
+    // GAMEPAD HANDLING - CON CONDICIÓN MEJORADA
+    // ==========================================
 
-			auto dz = [deadzone](float value)
-			{
-				return std::abs(value) < deadzone ? 0.0f : value;
-			};
+    // Variable estática para recordar el estado anterior del mando
+    static bool gamepadConnected = false;
+    static float gamepadCheckTimer = 0.0f;
+    static bool firstConnectionMessage = true;
 
-			float leftX = dz(state.axes[GLFW_GAMEPAD_AXIS_LEFT_X]);
-			float leftY = dz(state.axes[GLFW_GAMEPAD_AXIS_LEFT_Y]);
-			float rightX = dz(state.axes[GLFW_GAMEPAD_AXIS_RIGHT_X]);
-			float rightY = dz(state.axes[GLFW_GAMEPAD_AXIS_RIGHT_Y]);
+    // Verificar si hay un mando conectado (cada 0.5 segundos para optimizar)
+    gamepadCheckTimer += deltaTime;
 
-			Position += currentSpeed * leftX * right;
-			Position += currentSpeed * -leftY * moveForward;
+    if (gamepadCheckTimer >= 0.5f)
+    {
+        gamepadCheckTimer = 0.0f;
+        bool wasConnected = gamepadConnected;
+        gamepadConnected = glfwJoystickIsGamepad(GLFW_JOYSTICK_1);
 
-			float lookSpeed = sensitivity * deltaTime * 1.7f;
+        // Mostrar mensaje cuando se conecta/desconecta el mando
+        if (wasConnected != gamepadConnected)
+        {
+            if (gamepadConnected)
+            {
+                std::cout << "🎮 Gamepad connected! Player can use controller." << std::endl;
+                std::cout << "   - Left stick: Move" << std::endl;
+                std::cout << "   - Right stick: Look around" << std::endl;
+                std::cout << "   - Button A: Move up" << std::endl;
+                std::cout << "   - Button B: Move down" << std::endl;
+            }
+            else
+            {
+                std::cout << "🎮 Gamepad disconnected! Using keyboard/mouse only." << std::endl;
+            }
+        }
+        else if (gamepadConnected && firstConnectionMessage)
+        {
+            // Mensaje la primera vez que se detecta el mando
+            std::cout << "🎮 Gamepad detected! Use controller for camera movement." << std::endl;
+            std::cout << "   - Left stick: Move" << std::endl;
+            std::cout << "   - Right stick: Look around" << std::endl;
+            std::cout << "   - Button A: Move up" << std::endl;
+            std::cout << "   - Button B: Move down" << std::endl;
+            firstConnectionMessage = false;
+        }
+    }
 
-			glm::vec3 pitchAxis = glm::cross(forward, Up);
-			if (glm::length(pitchAxis) > 0.0001f)
-				pitchAxis = glm::normalize(pitchAxis);
-			else
-				pitchAxis = glm::vec3(1.0f, 0.0f, 0.0f);
+    // SOLO PROCESAR EL MANDO SI ESTÁ CONECTADO
+    if (gamepadConnected)
+    {
+        GLFWgamepadstate state;
 
-			glm::mat4 rotationX = glm::rotate(
-				glm::mat4(1.0f),
-				glm::radians(-rightY * lookSpeed),
-				pitchAxis
-			);
+        if (glfwGetGamepadState(GLFW_JOYSTICK_1, &state))
+        {
+            const float deadzone = 0.20f;
 
-			glm::vec3 newOrientation = glm::vec3(rotationX * glm::vec4(forward, 0.0f));
+            auto dz = [deadzone](float value)
+                {
+                    return std::abs(value) < deadzone ? 0.0f : value;
+                };
 
-			float orientationDot = glm::clamp(
-				glm::dot(glm::normalize(newOrientation), glm::normalize(Up)),
-				-1.0f,
-				1.0f
-			);
+            float leftX = dz(state.axes[GLFW_GAMEPAD_AXIS_LEFT_X]);
+            float leftY = dz(state.axes[GLFW_GAMEPAD_AXIS_LEFT_Y]);
+            float rightX = dz(state.axes[GLFW_GAMEPAD_AXIS_RIGHT_X]);
+            float rightY = dz(state.axes[GLFW_GAMEPAD_AXIS_RIGHT_Y]);
 
-			float orientationAngle = std::acos(orientationDot);
+            // MOVIMIENTO CON EL STICK IZQUIERDO
+            if (leftX != 0.0f || leftY != 0.0f)
+            {
+                Position += currentSpeed * leftX * right;
+                Position += currentSpeed * -leftY * moveForward;
+            }
 
-			if (abs(orientationAngle - glm::radians(90.0f)) <= glm::radians(85.0f))
-			{
-				forward = glm::normalize(newOrientation);
-			}
+            // MIRAR CON EL STICK DERECHO
+            if (rightX != 0.0f || rightY != 0.0f)
+            {
+                float lookSpeed = sensitivity * deltaTime * 1.7f;
 
-			glm::mat4 rotationY = glm::rotate(
-				glm::mat4(1.0f),
-				glm::radians(-rightX * lookSpeed),
-				Up
-			);
+                // Recalcular forward actual basado en Orientation
+                glm::vec3 currentForward = Orientation;
+                if (glm::length(currentForward) > 0.0001f)
+                    currentForward = glm::normalize(currentForward);
+                else
+                    currentForward = glm::vec3(0.0f, 0.0f, -1.0f);
 
-			Orientation = glm::normalize(glm::vec3(rotationY * glm::vec4(forward, 0.0f)));
+                // Pitch rotation (arriba/abajo)
+                glm::vec3 pitchAxis = glm::cross(currentForward, Up);
+                if (glm::length(pitchAxis) > 0.0001f)
+                    pitchAxis = glm::normalize(pitchAxis);
+                else
+                    pitchAxis = glm::vec3(1.0f, 0.0f, 0.0f);
 
-			// Botón A / Cross: subir
-			if (state.buttons[GLFW_GAMEPAD_BUTTON_A] == GLFW_PRESS)
-			{
-				Position += currentSpeed * Up;
-			}
+                glm::mat4 rotationX = glm::rotate(
+                    glm::mat4(1.0f),
+                    glm::radians(-rightY * lookSpeed),
+                    pitchAxis
+                );
 
-			// Botón B / Circle: bajar
-			if (state.buttons[GLFW_GAMEPAD_BUTTON_B] == GLFW_PRESS)
-			{
-				Position += currentSpeed * -Up;
-			}
-		}
-	}
+                glm::vec3 newOrientation = glm::vec3(rotationX * glm::vec4(currentForward, 0.0f));
 
+                float orientationDot = glm::clamp(
+                    glm::dot(glm::normalize(newOrientation), glm::normalize(Up)),
+                    -1.0f,
+                    1.0f
+                );
 
+                float orientationAngle = std::acos(orientationDot);
+
+                if (abs(orientationAngle - glm::radians(90.0f)) <= glm::radians(85.0f))
+                {
+                    currentForward = glm::normalize(newOrientation);
+                }
+
+                // Yaw rotation (izquierda/derecha)
+                glm::mat4 rotationY = glm::rotate(
+                    glm::mat4(1.0f),
+                    glm::radians(-rightX * lookSpeed),
+                    Up
+                );
+
+                Orientation = glm::normalize(glm::vec3(rotationY * glm::vec4(currentForward, 0.0f)));
+            }
+
+            // BOTONES DE MOVIMIENTO VERTICAL
+            // Botón A / Cross: subir
+            if (state.buttons[GLFW_GAMEPAD_BUTTON_A] == GLFW_PRESS)
+            {
+                Position += currentSpeed * Up;
+            }
+
+            // Botón B / Circle: bajar
+            if (state.buttons[GLFW_GAMEPAD_BUTTON_B] == GLFW_PRESS)
+            {
+                Position += currentSpeed * -Up;
+            }
+        }
+    }
 }
