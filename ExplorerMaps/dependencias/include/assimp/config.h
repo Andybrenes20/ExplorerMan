@@ -1185,4 +1185,3 @@ enum aiComponent
 /* #undef ASSIMP_DOUBLE_PRECISION */
 
 #endif // !! AI_CONFIG_H_INC
-

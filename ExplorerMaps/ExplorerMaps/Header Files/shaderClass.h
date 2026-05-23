@@ -8,6 +8,8 @@
 #include<iostream>
 #include<cerrno>
 #include<stdexcept>
+#include<string>
+#include<unordered_map>
 
 std::string get_file_contents(const char* filename);
 
@@ -19,6 +21,10 @@ public:
 
 	void Activate();
 	void Delete();
+	GLint GetUniformLocation(const char* uniformName);
+
+private:
+	std::unordered_map<std::string, GLint> uniformLocationCache;
 };
 
 

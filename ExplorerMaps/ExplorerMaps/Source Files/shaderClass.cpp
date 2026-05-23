@@ -51,3 +51,16 @@ void Shader::Delete()
 {
 	glDeleteProgram(ID);
 }
+
+GLint Shader::GetUniformLocation(const char* uniformName)
+{
+	const auto cached = uniformLocationCache.find(uniformName);
+	if (cached != uniformLocationCache.end())
+	{
+		return cached->second;
+	}
+
+	const GLint location = glGetUniformLocation(ID, uniformName);
+	uniformLocationCache.emplace(uniformName, location);
+	return location;
+}

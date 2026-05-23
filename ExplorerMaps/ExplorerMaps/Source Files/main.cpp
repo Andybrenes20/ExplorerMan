@@ -1,138 +1,136 @@
-#include <glad/glad.h>
-#include <GLFW/glfw3.h>
-#include <glm/glm.hpp>
-#include <glm/gtc/matrix_transform.hpp>
-#include <glm/gtc/type_ptr.hpp>
+//------- Ignore this ----------
+#include<algorithm>
+#include<filesystem>
+#include<iomanip>
+#include<sstream>
+namespace fs = std::filesystem;
+//------------------------------
 
-#include <iostream>
-
-#include "shaderClass.h"
-#include "VAO.h"
-#include "VBO.h"
-#include "EBO.h"
-
-namespace
+#ifdef _WIN32
+extern "C"
 {
-    constexpr unsigned int kWindowWidth = 900;
-    constexpr unsigned int kWindowHeight = 700;
-
-    void framebuffer_size_callback(GLFWwindow* window, int width, int height)
-    {
-        glViewport(0, 0, width, height);
-    }
-
-    void processInput(GLFWwindow* window)
-    {
-        if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
-        {
-            glfwSetWindowShouldClose(window, true);
-        }
-    }
+	__declspec(dllexport) unsigned long NvOptimusEnablement = 0x00000001;
+	__declspec(dllexport) int AmdPowerXpressRequestHighPerformance = 0x00000001;
 }
+#endif
+
+#include "Model.h"
+#include "Skybox.h"
+
+const unsigned int width = 1920;
+const unsigned int height = 1080;
+const float targetSceneRadius = 1800.0f;
+const float cameraFov = 55.0f;
+const float cameraNearPlane = 0.05f;
+const float cameraFarPlane = 6000.0f;
+const bool showCoordinatesInWindowTitle = false;
+const bool useFastRenderMode = false;
 
 int main()
 {
-    // Initialize GLFW before creating the window.
-    glfwInit();
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
-    glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+	glfwInit();
+	glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
+	glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
+	glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 
-    GLFWwindow* window = glfwCreateWindow(kWindowWidth, kWindowHeight, "Cubo 3D", nullptr, nullptr);
-    if (window == nullptr)
-    {
-        std::cerr << "Failed to create GLFW window." << std::endl;
-        glfwTerminate();
-        return -1;
-    }
+	GLFWwindow* window = glfwCreateWindow(width, height, "Importando un Modelo 3D gltf", NULL, NULL);
+	if (window == NULL)
+	{
+		std::cout << "Failed to create GLFW window" << std::endl;
+		glfwTerminate(); 
+		return -1;
+	}
 
-    glfwMakeContextCurrent(window);
-    glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
+	glfwMakeContextCurrent(window);
+	glfwSwapInterval(0);
+	gladLoadGL();
+	glViewport(0, 0, width, height);
 
-    // Load OpenGL function pointers with GLAD.
-    if (!gladLoadGL())
-    {
-        std::cerr << "Failed to initialize GLAD." << std::endl;
-        glfwDestroyWindow(window);
-        glfwTerminate();
-        return -1;
-    }
+	Shader shaderProgram("Shaders/default.vert", "Shaders/default.frag");
 
-    glViewport(0, 0, kWindowWidth, kWindowHeight);
-    glEnable(GL_DEPTH_TEST);
+	glm::vec4 lightColor = glm::vec4(1.0f, 1.0f, 1.0f, 1.0f);
+	glm::vec3 lightPos = glm::vec3(0.5f, 0.5f, 0.5f);
+	glm::mat4 lightModel = glm::mat4(1.0f);
+	lightModel = glm::translate(lightModel, lightPos);
 
-    // Each vertex stores position (x, y, z) and color (r, g, b).
-    GLfloat vertices[] =
-    {
-        -0.5f, -0.5f, -0.5f, 1.0f, 0.2f, 0.2f,
-         0.5f, -0.5f, -0.5f, 0.2f, 1.0f, 0.2f,
-         0.5f,  0.5f, -0.5f, 0.2f, 0.2f, 1.0f,
-        -0.5f,  0.5f, -0.5f, 1.0f, 1.0f, 0.2f,
-        -0.5f, -0.5f,  0.5f, 1.0f, 0.2f, 1.0f,
-         0.5f, -0.5f,  0.5f, 0.2f, 1.0f, 1.0f,
-         0.5f,  0.5f,  0.5f, 1.0f, 0.6f, 0.2f,
-        -0.5f,  0.5f,  0.5f, 0.7f, 0.7f, 1.0f
-    };
+	shaderProgram.Activate();
+	glUniform4f(glGetUniformLocation(shaderProgram.ID, "lightColor"), lightColor.x, lightColor.y, lightColor.z, lightColor.w);
+	glUniform3f(glGetUniformLocation(shaderProgram.ID, "lightPos"), lightPos.x, lightPos.y, lightPos.z);
 
-    GLuint indices[] =
-    {
-        0, 1, 2, 2, 3, 0,
-        4, 5, 6, 6, 7, 4,
-        0, 1, 5, 5, 4, 0,
-        2, 3, 7, 7, 6, 2,
-        1, 2, 6, 6, 5, 1,
-        3, 0, 4, 4, 7, 3
-    };
+	Model model("modelos/city.glb");
+	Skybox skybox(
+		{},
+		"Shaders/skybox_cubemap.vert",
+		"Shaders/skybox_cubemap.frag"
+	);
 
-    Shader shaderProgram("Shaders/default.vert", "Shaders/default.frag");
+	glm::vec3 modelCenter = model.GetCenter();
+	float modelRadius = model.GetRadius();
+	if (modelRadius < 1.0f)
+	{
+		modelRadius = 1.0f;
+	}
 
-    VAO vao;
-    vao.Bind();
+	const float normalizationScale = targetSceneRadius / modelRadius;
+	const glm::mat4 modelTransform =
+		glm::scale(glm::mat4(1.0f), glm::vec3(normalizationScale)) *
+		glm::translate(glm::mat4(1.0f), -modelCenter);
 
-    VBO vbo(vertices, sizeof(vertices));
-    EBO ebo(indices, sizeof(indices));
+	glEnable(GL_DEPTH_TEST);
+	glEnable(GL_CULL_FACE);
+	glCullFace(GL_BACK);
+	glFrontFace(GL_CCW);
 
-    // Attribute 0 reads the vertex position.
-    vao.LinkAttrib(vbo, 0, 3, GL_FLOAT, 6 * sizeof(float), reinterpret_cast<void*>(0));
-    // Attribute 1 reads the vertex color.
-    vao.LinkAttrib(vbo, 1, 3, GL_FLOAT, 6 * sizeof(float), reinterpret_cast<void*>(3 * sizeof(float)));
+	Camera camera(width, height, glm::vec3(0.0f, targetSceneRadius * 0.30f, targetSceneRadius * 1.05f));
+	camera.Orientation = glm::normalize(glm::vec3(0.0f) - camera.Position);
+	camera.speed = 320.0f;
+	float lastFrame = 0.0f;
+	float lastTitleUpdate = 0.0f;
+	glm::vec3 lastTitlePosition = camera.Position;
 
-    vao.Unbind();
-    vbo.Unbind();
-    ebo.Unbind();
+	while (!glfwWindowShouldClose(window))
+	{
+		float currentFrame = static_cast<float>(glfwGetTime());
+		float deltaTime = currentFrame - lastFrame;
+		lastFrame = currentFrame;
 
-    while (!glfwWindowShouldClose(window))
-    {
-        processInput(window);
+		glClearColor(0.07f, 0.13f, 0.17f, 1.0f);
+		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-        glClearColor(0.08f, 0.10f, 0.15f, 1.0f);
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+		camera.Inputs(window, deltaTime);
+		camera.updateMatrix(cameraFov, cameraNearPlane, cameraFarPlane);
 
-        shaderProgram.Activate();
-        vao.Bind();
-        ebo.Bind();
+		if (showCoordinatesInWindowTitle &&
+			currentFrame - lastTitleUpdate >= 0.25f &&
+			glm::distance(camera.Position, lastTitlePosition) >= 1.0f)
+		{
+			const glm::vec3 normalizedCameraPosition = glm::clamp(
+				camera.Position / targetSceneRadius,
+				glm::vec3(-1.0f),
+				glm::vec3(1.0f)
+			);
+			std::ostringstream windowTitle;
+			windowTitle << std::fixed << std::setprecision(2)
+				<< "City.glb  X:" << normalizedCameraPosition.x
+				<< " Y:" << normalizedCameraPosition.y
+				<< " Z:" << normalizedCameraPosition.z;
+			glfwSetWindowTitle(window, windowTitle.str().c_str());
+			lastTitleUpdate = currentFrame;
+			lastTitlePosition = camera.Position;
+		}
 
-        // Build a simple camera and a rotating model transform.
-        glm::mat4 model = glm::rotate(glm::mat4(1.0f), static_cast<float>(glfwGetTime()) * glm::radians(35.0f), glm::vec3(0.5f, 1.0f, 0.0f));
-        glm::mat4 view = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, -3.0f));
-        glm::mat4 projection = glm::perspective(glm::radians(45.0f), static_cast<float>(kWindowWidth) / static_cast<float>(kWindowHeight), 0.1f, 100.0f);
-        glm::mat4 mvp = projection * view * model;
+		model.Draw(shaderProgram, camera, modelTransform);
+		if (!useFastRenderMode)
+		{
+			skybox.Draw(camera, cameraFov, cameraNearPlane, cameraFarPlane);
+		}
 
-        GLuint matrixLocation = glGetUniformLocation(shaderProgram.ID, "uMVP");
-        glUniformMatrix4fv(matrixLocation, 1, GL_FALSE, glm::value_ptr(mvp));
+		glfwSwapBuffers(window);
+		glfwPollEvents();
+	}
 
-        glDrawElements(GL_TRIANGLES, static_cast<GLsizei>(std::size(indices)), GL_UNSIGNED_INT, nullptr);
-
-        glfwSwapBuffers(window);
-        glfwPollEvents();
-    }
-
-    vao.Delete();
-    vbo.Delete();
-    ebo.Delete();
-    shaderProgram.Delete();
-
-    glfwDestroyWindow(window);
-    glfwTerminate();
-    return 0;
+	shaderProgram.Delete();
+	glfwDestroyWindow(window);
+	glfwTerminate();
+	return 0;
 }
