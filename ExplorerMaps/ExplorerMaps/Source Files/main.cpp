@@ -1,4 +1,4 @@
-//------- Ignore this ----------
+﻿//------- Ignore this ----------
 #include<algorithm>
 #include<filesystem>
 #include<iomanip>
@@ -23,7 +23,7 @@ const float targetSceneRadius = 1800.0f;
 const float cameraFov = 55.0f;
 const float cameraNearPlane = 0.05f;
 const float cameraFarPlane = 6000.0f;
-const bool showCoordinatesInWindowTitle = false;
+const bool showCoordinatesInWindowTitle = true;  // Activado para mostrar coordenadas normalizadas
 const bool useFastRenderMode = false;
 
 int main()
@@ -33,11 +33,11 @@ int main()
 	glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
 	glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 
-	GLFWwindow* window = glfwCreateWindow(width, height, "Importando un Modelo 3D gltf", NULL, NULL);
+	GLFWwindow* window = glfwCreateWindow(width, height, "Proyecto", NULL, NULL);
 	if (window == NULL)
 	{
 		std::cout << "Failed to create GLFW window" << std::endl;
-		glfwTerminate(); 
+		glfwTerminate();
 		return -1;
 	}
 
@@ -97,23 +97,32 @@ int main()
 		glClearColor(0.07f, 0.13f, 0.17f, 1.0f);
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
+		// El mouse SOLO controla la dirección de la vista
 		camera.Inputs(window, deltaTime);
 		camera.updateMatrix(cameraFov, cameraNearPlane, cameraFarPlane);
 
+		// Mostrar coordenadas NORMALIZADAS de la posición de la cámara (como en Minecraft)
 		if (showCoordinatesInWindowTitle &&
-			currentFrame - lastTitleUpdate >= 0.25f &&
+			currentFrame - lastTitleUpdate >= 0.1f &&  // Actualizar 10 veces por segundo
 			glm::distance(camera.Position, lastTitlePosition) >= 1.0f)
 		{
+			// Normalizar la posición de la cámara al rango [-1, 1] basado en el tamaño de la escena
 			const glm::vec3 normalizedCameraPosition = glm::clamp(
 				camera.Position / targetSceneRadius,
 				glm::vec3(-1.0f),
 				glm::vec3(1.0f)
 			);
+
 			std::ostringstream windowTitle;
-			windowTitle << std::fixed << std::setprecision(2)
-				<< "City.glb  X:" << normalizedCameraPosition.x
+			windowTitle << std::fixed << std::setprecision(3);
+			windowTitle << "Coordenadas[X:" << normalizedCameraPosition.x
 				<< " Y:" << normalizedCameraPosition.y
-				<< " Z:" << normalizedCameraPosition.z;
+				<< " Z:" << normalizedCameraPosition.z << "]";
+
+			windowTitle << " | Mundo [X:" << std::setprecision(0)
+				<< camera.Position.x << " Y:" << camera.Position.y
+				<< " Z:" << camera.Position.z << "]";
+
 			glfwSetWindowTitle(window, windowTitle.str().c_str());
 			lastTitleUpdate = currentFrame;
 			lastTitlePosition = camera.Position;
