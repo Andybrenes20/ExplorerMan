@@ -202,6 +202,15 @@ xcopy /E /I /Y "$(ProjectDir)modelos" "$(OutDir)modelos"</Command>
     <None Include="Shaders\skybox_cubemap.frag" />
     <None Include="Shaders\skybox_cubemap.vert" />
   </ItemGroup>
+  <ItemGroup>
+    <Image Include="Texutras\skybox.jpg" />
+    <Image Include="Texutras\SkyboxCubemap\back.jpg" />
+    <Image Include="Texutras\SkyboxCubemap\bottom.jpg" />
+    <Image Include="Texutras\SkyboxCubemap\front.jpg" />
+    <Image Include="Texutras\SkyboxCubemap\left.jpg" />
+    <Image Include="Texutras\SkyboxCubemap\right.jpg" />
+    <Image Include="Texutras\SkyboxCubemap\top.jpg" />
+  </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>

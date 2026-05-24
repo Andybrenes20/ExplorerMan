@@ -25,6 +25,9 @@
     <Filter Include="iluminacion">
       <UniqueIdentifier>{30412c42-63e0-4e9b-ba45-bff922413286}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Resource Files\Textures\SkyboxCubemap">
+      <UniqueIdentifier>{d204bb5d-2342-40cb-928f-f6e50f74be4e}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Source Files\Camara.cpp">
@@ -149,5 +152,28 @@
     <None Include="Iluminacion\lighting.vs">
       <Filter>iluminacion</Filter>
     </None>
+  </ItemGroup>
+  <ItemGroup>
+    <Image Include="Texutras\skybox.jpg">
+      <Filter>Resource Files\Textures</Filter>
+    </Image>
+    <Image Include="Texutras\SkyboxCubemap\back.jpg">
+      <Filter>Resource Files\Textures\SkyboxCubemap</Filter>
+    </Image>
+    <Image Include="Texutras\SkyboxCubemap\bottom.jpg">
+      <Filter>Resource Files\Textures\SkyboxCubemap</Filter>
+    </Image>
+    <Image Include="Texutras\SkyboxCubemap\front.jpg">
+      <Filter>Resource Files\Textures\SkyboxCubemap</Filter>
+    </Image>
+    <Image Include="Texutras\SkyboxCubemap\left.jpg">
+      <Filter>Resource Files\Textures\SkyboxCubemap</Filter>
+    </Image>
+    <Image Include="Texutras\SkyboxCubemap\right.jpg">
+      <Filter>Resource Files\Textures\SkyboxCubemap</Filter>
+    </Image>
+    <Image Include="Texutras\SkyboxCubemap\top.jpg">
+      <Filter>Resource Files\Textures\SkyboxCubemap</Filter>
+    </Image>
   </ItemGroup>
 </Project>
