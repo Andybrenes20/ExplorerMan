@@ -181,6 +181,7 @@ xcopy /E /I /Y "$(ProjectDir)modelos" "$(OutDir)modelos"</Command>
     <ClInclude Include="Header Files\VAO.h" />
     <ClInclude Include="Header Files\VBO.h" />
     <ClInclude Include="Header Files\Vertex.h" />
+    <ClInclude Include="Shader.h" />
     <ClInclude Include="Source Files\stb_image.h" />
   </ItemGroup>
   <ItemGroup>
@@ -201,6 +202,8 @@ xcopy /E /I /Y "$(ProjectDir)modelos" "$(OutDir)modelos"</Command>
     <None Include="Shaders\skybox.vert" />
     <None Include="Shaders\skybox_cubemap.frag" />
     <None Include="Shaders\skybox_cubemap.vert" />
+    <None Include="Shaders\sphere.frag" />
+    <None Include="Shaders\sphere.vert" />
   </ItemGroup>
   <ItemGroup>
     <Image Include="Texutras\skybox.jpg" />

@@ -13,7 +13,7 @@
 
 namespace
 {
-	constexpr float kMeshCullDistanceMultiplier = 2.25f;
+	constexpr float kMeshCullDistanceMultiplier = 1.55f;
 	constexpr float kCollisionEpsilon = 0.001f;
 
 	std::string toLowerCopy(std::string value)
@@ -167,6 +167,13 @@ namespace
 		const float w = vc * denom;
 		return a + ab * v + ac * w;
 	}
+
+	float distanceSquaredXZ(const glm::vec3& point, const glm::vec3& candidate)
+	{
+		const float dx = point.x - candidate.x;
+		const float dz = point.z - candidate.z;
+		return dx * dx + dz * dz;
+	}
 }
 
 Model::Model(const char* file)
@@ -197,14 +204,14 @@ Model::Model(const char* file)
 	traverseNode(0);
 }
 
-void Model::Draw(Shader& shader, Camera& camera, const glm::mat4& worldTransform)
+void Model::Draw(Shader& shader, Camera& camera, const glm::mat4& worldTransform, bool cameraInsideStructure)
 {
 	shader.Activate();
 	glUniform3f(shader.GetUniformLocation("camPos"), camera.Position.x, camera.Position.y, camera.Position.z);
 	camera.Matrix(shader, "camMatrix");
 
 	const float worldScale = glm::length(glm::vec3(worldTransform[0]));
-	const float maxVisibleDistance = GetRadius() * worldScale * kMeshCullDistanceMultiplier;
+	const float maxVisibleDistance = GetRadius() * worldScale * (cameraInsideStructure ? 0.60f : kMeshCullDistanceMultiplier);
 
 	// Go over all meshes and draw each one
 	for (unsigned int i = 0; i < meshes.size(); i++)
@@ -213,7 +220,14 @@ void Model::Draw(Shader& shader, Camera& camera, const glm::mat4& worldTransform
 		{
 			const glm::vec3 worldCenter = glm::vec3(worldTransform * matricesMeshes[i] * glm::vec4(meshBoundsCenters[i], 1.0f));
 			const float worldRadius = meshBoundsRadii[i] * worldScale;
-			if (glm::distance(camera.Position, worldCenter) > maxVisibleDistance + worldRadius)
+			const float visibleDistance = maxVisibleDistance + worldRadius;
+			const float visibleDistanceSquared = visibleDistance * visibleDistance;
+			const glm::vec3 toMesh = camera.Position - worldCenter;
+			if (cameraInsideStructure && glm::dot(toMesh, toMesh) < (worldRadius * worldRadius))
+			{
+				continue;
+			}
+			if (glm::dot(toMesh, toMesh) > visibleDistanceSquared)
 			{
 				continue;
 			}
@@ -302,6 +316,308 @@ glm::vec3 Model::ResolveCollision(const glm::vec3& position, const glm::mat4& wo
 
 	resolved = glm::vec3(worldTransform * glm::vec4(localResolved, 1.0f));
 	return resolved;
+}
+
+bool Model::TrySnapToWalkableSurface(
+	const glm::vec3& position,
+	const glm::mat4& worldTransform,
+	float probeRadius,
+	float eyeHeight,
+	float maxStepUp,
+	float maxDropDown,
+	float maxSlopeDegrees,
+	glm::vec3& snappedPosition) const
+{
+	if (collisionMeshes.empty())
+	{
+		return false;
+	}
+
+	const glm::mat4 inverseWorldTransform = glm::inverse(worldTransform);
+	const glm::vec3 localPosition = glm::vec3(inverseWorldTransform * glm::vec4(position, 1.0f));
+	const float scaleX = glm::length(glm::vec3(worldTransform[0]));
+	const float scaleY = glm::length(glm::vec3(worldTransform[1]));
+	const float scaleZ = glm::length(glm::vec3(worldTransform[2]));
+	const float averageScale = std::max((scaleX + scaleY + scaleZ) / 3.0f, 0.0001f);
+	const float localProbeRadius = probeRadius / averageScale;
+	const float localEyeHeight = eyeHeight / averageScale;
+	const float localMaxStepUp = maxStepUp / averageScale;
+	const float localMaxDropDown = maxDropDown / averageScale;
+	const glm::vec3 localFeetPosition = localPosition - glm::vec3(0.0f, localEyeHeight, 0.0f);
+	const float minNormalY = std::cos(glm::radians(maxSlopeDegrees));
+	const float maxHorizontalDistance = std::max(localProbeRadius * 3.0f, 0.25f);
+	const float maxHorizontalDistanceSquared = maxHorizontalDistance * maxHorizontalDistance;
+
+	bool foundSurface = false;
+	float bestFootY = -FLT_MAX;
+	float bestHorizontalDistanceSquared = FLT_MAX;
+
+	auto evaluateCollisionMesh = [&](const CollisionMesh& collisionMesh, int collisionMeshIndex)
+	{
+		if (localFeetPosition.x < collisionMesh.boundsMin.x - maxHorizontalDistance ||
+			localFeetPosition.x > collisionMesh.boundsMax.x + maxHorizontalDistance ||
+			localFeetPosition.z < collisionMesh.boundsMin.z - maxHorizontalDistance ||
+			localFeetPosition.z > collisionMesh.boundsMax.z + maxHorizontalDistance)
+		{
+			return;
+		}
+
+		if (localFeetPosition.y < collisionMesh.boundsMin.y - localMaxStepUp ||
+			localFeetPosition.y > collisionMesh.boundsMax.y + localMaxDropDown)
+		{
+			return;
+		}
+
+		for (std::size_t index = 0; index + 2 < collisionMesh.indices.size(); index += 3)
+		{
+			const glm::vec3& a = collisionMesh.vertices[collisionMesh.indices[index]];
+			const glm::vec3& b = collisionMesh.vertices[collisionMesh.indices[index + 1]];
+			const glm::vec3& c = collisionMesh.vertices[collisionMesh.indices[index + 2]];
+			const glm::vec3 triangleNormal = glm::cross(b - a, c - a);
+			const float normalLength = glm::length(triangleNormal);
+			if (normalLength <= 0.0001f)
+			{
+				continue;
+			}
+
+			const glm::vec3 normal = triangleNormal / normalLength;
+			if (normal.y <= 0.0f || normal.y < minNormalY || std::abs(normal.y) <= 0.0001f)
+			{
+				continue;
+			}
+
+			const glm::vec3 closestPoint = closestPointOnTriangle(localFeetPosition, a, b, c);
+			const float horizontalDistanceSquared = distanceSquaredXZ(localFeetPosition, closestPoint);
+			if (horizontalDistanceSquared > maxHorizontalDistanceSquared)
+			{
+				continue;
+			}
+
+			const float heightDelta = closestPoint.y - localFeetPosition.y;
+			if (heightDelta > localMaxStepUp || heightDelta < -localMaxDropDown)
+			{
+				continue;
+			}
+
+			const bool isBetterSurface =
+				!foundSurface ||
+				horizontalDistanceSquared < bestHorizontalDistanceSquared - 0.0001f ||
+				(std::abs(horizontalDistanceSquared - bestHorizontalDistanceSquared) <= 0.0001f && closestPoint.y > bestFootY);
+			if (!isBetterSurface)
+			{
+				continue;
+			}
+
+			foundSurface = true;
+			bestFootY = closestPoint.y;
+			bestHorizontalDistanceSquared = horizontalDistanceSquared;
+			lastWalkableCollisionMeshIndex = collisionMeshIndex;
+		}
+	};
+
+	if (lastWalkableCollisionMeshIndex >= 0 &&
+		lastWalkableCollisionMeshIndex < static_cast<int>(collisionMeshes.size()))
+	{
+		evaluateCollisionMesh(collisionMeshes[static_cast<std::size_t>(lastWalkableCollisionMeshIndex)], lastWalkableCollisionMeshIndex);
+		if (foundSurface && bestHorizontalDistanceSquared <= localProbeRadius * localProbeRadius)
+		{
+			glm::vec3 localSnappedPosition = localPosition;
+			localSnappedPosition.y = bestFootY + localEyeHeight;
+			snappedPosition = glm::vec3(worldTransform * glm::vec4(localSnappedPosition, 1.0f));
+			return true;
+		}
+	}
+
+	for (std::size_t collisionMeshIndex = 0; collisionMeshIndex < collisionMeshes.size(); ++collisionMeshIndex)
+	{
+		if (static_cast<int>(collisionMeshIndex) == lastWalkableCollisionMeshIndex)
+		{
+			continue;
+		}
+
+		evaluateCollisionMesh(collisionMeshes[collisionMeshIndex], static_cast<int>(collisionMeshIndex));
+	}
+
+	if (!foundSurface)
+	{
+		return false;
+	}
+
+	glm::vec3 localSnappedPosition = localPosition;
+	localSnappedPosition.y = bestFootY + localEyeHeight;
+	snappedPosition = glm::vec3(worldTransform * glm::vec4(localSnappedPosition, 1.0f));
+	return true;
+}
+
+glm::vec3 Model::ResolveStructureCollision(
+	const glm::vec3& targetPosition,
+	const glm::vec3& previousPosition,
+	const glm::mat4& worldTransform,
+	float radius,
+	float eyeHeight) const
+{
+	if (collisionMeshes.empty())
+	{
+		return targetPosition;
+	}
+
+	const glm::mat4 inverseWorldTransform = glm::inverse(worldTransform);
+	const glm::vec3 localTargetPosition = glm::vec3(inverseWorldTransform * glm::vec4(targetPosition, 1.0f));
+	const glm::vec3 localPreviousPosition = glm::vec3(inverseWorldTransform * glm::vec4(previousPosition, 1.0f));
+	const float scaleX = glm::length(glm::vec3(worldTransform[0]));
+	const float scaleY = glm::length(glm::vec3(worldTransform[1]));
+	const float scaleZ = glm::length(glm::vec3(worldTransform[2]));
+	const float averageScale = std::max((scaleX + scaleY + scaleZ) / 3.0f, 0.0001f);
+	const float localRadius = radius / averageScale;
+	const float localEyeHeight = eyeHeight / averageScale;
+	const float localBodyHeight = std::max(localEyeHeight * 1.8f, localRadius * 2.0f);
+	const float sceneRadius = std::max(GetRadius(), 1.0f);
+	glm::vec3 localResolved = localTargetPosition;
+
+	auto resolveAgainstMesh = [&](const CollisionMesh& collisionMesh, int collisionMeshIndex)
+	{
+		const glm::vec3 extents = collisionMesh.boundsMax - collisionMesh.boundsMin;
+		const float footprint = std::max(extents.x, extents.z);
+		if (extents.y < localBodyHeight * 3.5f ||
+			footprint < localRadius * 4.0f ||
+			footprint > sceneRadius * 0.18f)
+		{
+			return;
+		}
+
+		const float lowerCollisionTop = collisionMesh.boundsMin.y + extents.y * 0.55f;
+		const float feetY = localResolved.y - localEyeHeight;
+		const float headY = feetY + localBodyHeight;
+		if (headY < collisionMesh.boundsMin.y || feetY > lowerCollisionTop)
+		{
+			return;
+		}
+
+		const float expandedMinX = collisionMesh.boundsMin.x - localRadius;
+		const float expandedMaxX = collisionMesh.boundsMax.x + localRadius;
+		const float expandedMinZ = collisionMesh.boundsMin.z - localRadius;
+		const float expandedMaxZ = collisionMesh.boundsMax.z + localRadius;
+
+		if (localResolved.x < expandedMinX || localResolved.x > expandedMaxX ||
+			localResolved.z < expandedMinZ || localResolved.z > expandedMaxZ)
+		{
+			return;
+		}
+
+		const float pushLeft = std::abs(localResolved.x - expandedMinX);
+		const float pushRight = std::abs(expandedMaxX - localResolved.x);
+		const float pushBack = std::abs(localResolved.z - expandedMinZ);
+		const float pushFront = std::abs(expandedMaxZ - localResolved.z);
+
+		float minPush = pushLeft;
+		glm::vec3 resolvedCandidate(expandedMinX, localResolved.y, localResolved.z);
+
+		if (pushRight < minPush)
+		{
+			minPush = pushRight;
+			resolvedCandidate = glm::vec3(expandedMaxX, localResolved.y, localResolved.z);
+		}
+		if (pushBack < minPush)
+		{
+			minPush = pushBack;
+			resolvedCandidate = glm::vec3(localResolved.x, localResolved.y, expandedMinZ);
+		}
+		if (pushFront < minPush)
+		{
+			resolvedCandidate = glm::vec3(localResolved.x, localResolved.y, expandedMaxZ);
+		}
+
+		if (std::abs(localPreviousPosition.x - localResolved.x) > std::abs(localPreviousPosition.z - localResolved.z))
+		{
+			resolvedCandidate.x = (localPreviousPosition.x <= collisionMesh.boundsMin.x)
+				? expandedMinX
+				: expandedMaxX;
+			resolvedCandidate.z = localResolved.z;
+		}
+		else if (std::abs(localPreviousPosition.z - localResolved.z) > 0.0001f)
+		{
+			resolvedCandidate.z = (localPreviousPosition.z <= collisionMesh.boundsMin.z)
+				? expandedMinZ
+				: expandedMaxZ;
+			resolvedCandidate.x = localResolved.x;
+		}
+
+		localResolved = resolvedCandidate;
+		lastStructureCollisionMeshIndex = collisionMeshIndex;
+	};
+
+	if (lastStructureCollisionMeshIndex >= 0 &&
+		lastStructureCollisionMeshIndex < static_cast<int>(collisionMeshes.size()))
+	{
+		resolveAgainstMesh(collisionMeshes[static_cast<std::size_t>(lastStructureCollisionMeshIndex)], lastStructureCollisionMeshIndex);
+	}
+
+	for (std::size_t collisionMeshIndex = 0; collisionMeshIndex < collisionMeshes.size(); ++collisionMeshIndex)
+	{
+		if (static_cast<int>(collisionMeshIndex) == lastStructureCollisionMeshIndex)
+		{
+			continue;
+		}
+
+		resolveAgainstMesh(collisionMeshes[collisionMeshIndex], static_cast<int>(collisionMeshIndex));
+	}
+
+	return glm::vec3(worldTransform * glm::vec4(localResolved, 1.0f));
+}
+
+bool Model::IsInsideStructureVolume(
+	const glm::vec3& position,
+	const glm::mat4& worldTransform,
+	float radius,
+	float eyeHeight) const
+{
+	if (collisionMeshes.empty())
+	{
+		return false;
+	}
+
+	const glm::mat4 inverseWorldTransform = glm::inverse(worldTransform);
+	const glm::vec3 localPosition = glm::vec3(inverseWorldTransform * glm::vec4(position, 1.0f));
+	const float scaleX = glm::length(glm::vec3(worldTransform[0]));
+	const float scaleY = glm::length(glm::vec3(worldTransform[1]));
+	const float scaleZ = glm::length(glm::vec3(worldTransform[2]));
+	const float averageScale = std::max((scaleX + scaleY + scaleZ) / 3.0f, 0.0001f);
+	const float localRadius = radius / averageScale;
+	const float localEyeHeight = eyeHeight / averageScale;
+	const float localBodyHeight = std::max(localEyeHeight * 1.8f, localRadius * 2.0f);
+	const float sceneRadius = std::max(GetRadius(), 1.0f);
+	const float feetY = localPosition.y - localEyeHeight;
+	const float headY = feetY + localBodyHeight;
+
+	for (const CollisionMesh& collisionMesh : collisionMeshes)
+	{
+		const glm::vec3 extents = collisionMesh.boundsMax - collisionMesh.boundsMin;
+		const float footprint = std::max(extents.x, extents.z);
+		if (extents.y < localBodyHeight * 3.5f ||
+			footprint < localRadius * 4.0f ||
+			footprint > sceneRadius * 0.18f)
+		{
+			continue;
+		}
+
+		const float lowerCollisionTop = collisionMesh.boundsMin.y + extents.y * 0.95f;
+		if (headY < collisionMesh.boundsMin.y || feetY > lowerCollisionTop)
+		{
+			continue;
+		}
+
+		const float expandedMinX = collisionMesh.boundsMin.x - localRadius;
+		const float expandedMaxX = collisionMesh.boundsMax.x + localRadius;
+		const float expandedMinZ = collisionMesh.boundsMin.z - localRadius;
+		const float expandedMaxZ = collisionMesh.boundsMax.z + localRadius;
+		if (localPosition.x >= expandedMinX && localPosition.x <= expandedMaxX &&
+			localPosition.z >= expandedMinZ && localPosition.z <= expandedMaxZ)
+		{
+			return true;
+		}
+	}
+
+	return false;
 }
 
 void Model::loadMesh(unsigned int indMesh)

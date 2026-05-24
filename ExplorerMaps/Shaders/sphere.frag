@@ -1,0 +1,37 @@
+#version 330 core
+out vec4 FragColor;
+
+in vec3 FragPos;
+in vec3 Normal;
+
+uniform vec3 color;
+uniform vec3 lightPos;
+uniform vec3 viewPos;
+uniform float sunHeight;
+uniform float isDay;
+
+void main()
+{
+    vec3 norm = normalize(Normal);
+    vec3 lightDir = normalize(lightPos - FragPos);
+    vec3 viewDir = normalize(viewPos - FragPos);
+    vec3 reflectDir = reflect(-lightDir, norm);
+    
+    float diff = max(dot(norm, lightDir), 0.0);
+    float spec = pow(max(dot(viewDir, reflectDir), 0.0), 32.0);
+    
+    vec3 ambient = color * 0.3;
+    vec3 diffuse = color * diff * 0.8;
+    vec3 specular = vec3(1.0, 0.95, 0.85) * spec * 0.5;
+    
+    vec3 result = ambient + diffuse + specular;
+    
+    float glow = pow(1.0 - abs(dot(norm, viewDir)), 2.0);
+    if (isDay > 0.5) {
+        result += vec3(1.0, 0.7, 0.3) * glow * 0.8;
+    } else {
+        result += vec3(0.5, 0.6, 0.8) * glow * 0.5;
+    }
+    
+    FragColor = vec4(result, 1.0);
+}

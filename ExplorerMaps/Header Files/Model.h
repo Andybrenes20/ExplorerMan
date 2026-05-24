@@ -21,10 +21,34 @@ public:
 	// Loads in a model from a file and stores tha information in 'data', 'JSON', and 'file'
 	Model(const char* file);
 
-	void Draw(Shader& shader, Camera& camera, const glm::mat4& worldTransform = glm::mat4(1.0f));
+	void Draw(
+		Shader& shader,
+		Camera& camera,
+		const glm::mat4& worldTransform = glm::mat4(1.0f),
+		bool cameraInsideStructure = false);
 	glm::vec3 GetCenter() const;
 	float GetRadius() const;
 	glm::vec3 ResolveCollision(const glm::vec3& position, const glm::mat4& worldTransform, float radius) const;
+	bool TrySnapToWalkableSurface(
+		const glm::vec3& position,
+		const glm::mat4& worldTransform,
+		float probeRadius,
+		float eyeHeight,
+		float maxStepUp,
+		float maxDropDown,
+		float maxSlopeDegrees,
+		glm::vec3& snappedPosition) const;
+	glm::vec3 ResolveStructureCollision(
+		const glm::vec3& targetPosition,
+		const glm::vec3& previousPosition,
+		const glm::mat4& worldTransform,
+		float radius,
+		float eyeHeight) const;
+	bool IsInsideStructureVolume(
+		const glm::vec3& position,
+		const glm::mat4& worldTransform,
+		float radius,
+		float eyeHeight) const;
 
 private:
 	struct AssimpMeshBatch
@@ -60,6 +84,8 @@ private:
 	std::vector<glm::vec3> meshBoundsCenters;
 	std::vector<float> meshBoundsRadii;
 	std::vector<CollisionMesh> collisionMeshes;
+	mutable int lastWalkableCollisionMeshIndex = -1;
+	mutable int lastStructureCollisionMeshIndex = -1;
 	std::vector<AssimpMeshBatch> assimpBatches;
 	std::unordered_map<unsigned int, std::size_t> assimpBatchLookup;
 

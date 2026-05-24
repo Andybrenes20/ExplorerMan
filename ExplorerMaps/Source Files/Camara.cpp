@@ -59,12 +59,7 @@ void Camera::Inputs(GLFWwindow* window, float deltaTime)
     float currentSpeed = speed * deltaTime;
     if (glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS)
     {
-        currentSpeed *= 2.2f;
-    }
-
-    if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS)
-    {
-        flyMode = true;
+        currentSpeed *= 1.65f;
     }
 
     // Calculate movement directions based on Orientation
