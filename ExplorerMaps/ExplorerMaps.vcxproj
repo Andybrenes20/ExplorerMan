@@ -188,6 +188,10 @@ xcopy /E /I /Y "$(ProjectDir)modelos" "$(OutDir)modelos"</Command>
     <None Include="assimp-vc143-mtd.dll" />
     <None Include="glew32.dll" />
     <None Include="glfw3.dll" />
+    <None Include="Iluminacion\lamp.frag" />
+    <None Include="Iluminacion\lamp.vs" />
+    <None Include="Iluminacion\lighting.frag" />
+    <None Include="Iluminacion\lighting.vs" />
     <None Include="modelos\city.glb" />
     <None Include="Shaders\default.frag" />
     <None Include="Shaders\default.vert" />

@@ -22,6 +22,9 @@
     <Filter Include="modelos">
       <UniqueIdentifier>{0503f78e-872a-44a4-a6ac-47b42ee1890c}</UniqueIdentifier>
     </Filter>
+    <Filter Include="iluminacion">
+      <UniqueIdentifier>{30412c42-63e0-4e9b-ba45-bff922413286}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Source Files\Camara.cpp">
@@ -133,6 +136,18 @@
     <None Include="glfw3.dll" />
     <None Include="modelos\city.glb">
       <Filter>modelos</Filter>
+    </None>
+    <None Include="Iluminacion\lamp.frag">
+      <Filter>iluminacion</Filter>
+    </None>
+    <None Include="Iluminacion\lamp.vs">
+      <Filter>iluminacion</Filter>
+    </None>
+    <None Include="Iluminacion\lighting.frag">
+      <Filter>iluminacion</Filter>
+    </None>
+    <None Include="Iluminacion\lighting.vs">
+      <Filter>iluminacion</Filter>
     </None>
   </ItemGroup>
 </Project>
