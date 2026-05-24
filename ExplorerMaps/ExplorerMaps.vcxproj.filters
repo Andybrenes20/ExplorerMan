@@ -19,6 +19,9 @@
     <Filter Include="Resource Files\Textures">
       <UniqueIdentifier>{940DF1AB-A0DA-4E8D-859F-BF84F29E7348}</UniqueIdentifier>
     </Filter>
+    <Filter Include="modelos">
+      <UniqueIdentifier>{0503f78e-872a-44a4-a6ac-47b42ee1890c}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Source Files\Camara.cpp">
@@ -128,5 +131,8 @@
     <None Include="assimp-vc143-mtd.dll" />
     <None Include="glew32.dll" />
     <None Include="glfw3.dll" />
+    <None Include="modelos\city.glb">
+      <Filter>modelos</Filter>
+    </None>
   </ItemGroup>
 </Project>
