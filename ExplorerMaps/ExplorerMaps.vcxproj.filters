@@ -124,5 +124,9 @@
     <None Include="Shaders\skybox_cubemap.vert">
       <Filter>Resource Files\Shaders</Filter>
     </None>
+    <None Include="assimp-vc143-mt.pdb" />
+    <None Include="assimp-vc143-mtd.dll" />
+    <None Include="glew32.dll" />
+    <None Include="glfw3.dll" />
   </ItemGroup>
 </Project>
