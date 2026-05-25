@@ -21,6 +21,7 @@ void main()
 {
     vec3 norm = normalize(Normal);
     vec3 baseColor = color;
+    bool isSun = isDay > 0.5;
 
     if (useTexture > 0.5) {
         vec2 moonUv = vec2(
@@ -29,7 +30,12 @@ void main()
         );
 
         baseColor = texture(sphereTexture, moonUv).rgb;
-        baseColor = mix(baseColor, color, 0.18);
+        baseColor = mix(baseColor, color, isSun ? 0.55 : 0.18);
+    }
+
+    if (unlit > 0.5) {
+        FragColor = vec4(baseColor, alpha);
+        return;
     }
 
     if (unlit > 0.5) {
@@ -44,17 +50,21 @@ void main()
     float diff = max(dot(norm, lightDir), 0.0);
     float spec = pow(max(dot(viewDir, reflectDir), 0.0), 32.0);
     
-    vec3 ambient = baseColor * 0.3;
-    vec3 diffuse = baseColor * diff * 0.8;
-    vec3 specular = vec3(1.0, 0.95, 0.85) * spec * 0.5;
+    vec3 ambient = baseColor * (isSun ? 0.78 : 0.3);
+    vec3 diffuse = baseColor * diff * (isSun ? 1.30 : 0.8);
+    vec3 specular = vec3(1.0, 0.95, 0.85) * spec * (isSun ? 0.85 : 0.5);
     
     vec3 result = ambient + diffuse + specular;
     
-    float glow = pow(1.0 - abs(dot(norm, viewDir)), 2.0);
-    if (isDay > 0.5) {
-        result += vec3(1.0, 0.7, 0.3) * glow * 0.8;
+    float rim = pow(1.0 - abs(dot(norm, viewDir)), isSun ? 1.35 : 2.0);
+    if (isSun) {
+        float coreGlow = 1.0 - clamp(distance(LocalNormal.xy, vec2(0.0)), 0.0, 1.0);
+        coreGlow = pow(coreGlow, 1.8);
+        result += vec3(1.0, 0.78, 0.36) * rim * 1.6;
+        result += vec3(1.0, 0.92, 0.62) * coreGlow * 1.1;
+        result *= 1.18;
     } else {
-        result += vec3(0.5, 0.6, 0.8) * glow * 0.5;
+        result += vec3(0.5, 0.6, 0.8) * rim * 0.5;
     }
     
     FragColor = vec4(result, alpha);

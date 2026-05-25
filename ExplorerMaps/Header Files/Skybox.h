@@ -10,6 +10,15 @@
 #include "Camara.h"
 #include "shaderClass.h"
 
+struct SkyCloudSettings
+{
+	float coverage = 0.62f;
+	float speed = 1.0f;
+	float crispiness = 1.0f;
+	float curliness = 0.75f;
+	float density = 0.95f;
+};
+
 class Skybox
 {
 public:
@@ -21,8 +30,9 @@ public:
 	);
 	~Skybox();
 
-	void Draw(const Camera& camera, float FOVdeg, float nearPlane, float farPlane);
+	void Draw(const Camera& camera, float FOVdeg, float nearPlane, float farPlane, float time, float sunHeight);
 	void SetBlendFactor(float factor);
+	void SetCloudSettings(const SkyCloudSettings& settings);
 	static std::vector<unsigned char> BuildProceduralFace(int width, int height, int faceIndex, bool nightTheme);
 
 private:
@@ -31,6 +41,7 @@ private:
 	GLuint dayCubemapTexture = 0;
 	GLuint nightCubemapTexture = 0;
 	float blendFactor = 0.0f;
+	SkyCloudSettings cloudSettings;
 	Shader shader;
 
 	void setupCube();

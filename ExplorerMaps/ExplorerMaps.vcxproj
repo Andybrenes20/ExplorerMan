@@ -77,7 +77,7 @@
       <PreprocessorDefinitions>WIN32;_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp17</LanguageStandard>
-      <AdditionalIncludeDirectories>$(SolutionDir)dependencias\include;$(ProjectDir);$(ProjectDir)Header Files;$(ProjectDir)Source Files</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir)dependencias\include;$(ProjectDir);$(ProjectDir)Header Files;$(ProjectDir)Source Files;$(ProjectDir)imgui</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -100,7 +100,7 @@ xcopy /E /I /Y "$(ProjectDir)Texturas" "$(OutDir)Texturas"</Command>
       <PreprocessorDefinitions>WIN32;NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp17</LanguageStandard>
-      <AdditionalIncludeDirectories>$(SolutionDir)dependencias\include;$(ProjectDir);$(ProjectDir)Header Files;$(ProjectDir)Source Files</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir)dependencias\include;$(ProjectDir);$(ProjectDir)Header Files;$(ProjectDir)Source Files;$(ProjectDir)imgui</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -121,7 +121,7 @@ xcopy /E /I /Y "$(ProjectDir)Texturas" "$(OutDir)Texturas"</Command>
       <PreprocessorDefinitions>_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp17</LanguageStandard>
-      <AdditionalIncludeDirectories>$(SolutionDir)dependencias\include;$(ProjectDir);$(ProjectDir)Header Files;$(ProjectDir)Source Files</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir)dependencias\include;$(ProjectDir);$(ProjectDir)Header Files;$(ProjectDir)Source Files;$(ProjectDir)imgui</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -144,7 +144,7 @@ xcopy /E /I /Y "$(ProjectDir)Texturas" "$(OutDir)Texturas"</Command>
       <PreprocessorDefinitions>NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp17</LanguageStandard>
-      <AdditionalIncludeDirectories>$(SolutionDir)dependencias\include;$(ProjectDir);$(ProjectDir)Header Files;$(ProjectDir)Source Files</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir)dependencias\include;$(ProjectDir);$(ProjectDir)Header Files;$(ProjectDir)Source Files;$(ProjectDir)imgui</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -160,6 +160,11 @@ xcopy /E /I /Y "$(ProjectDir)Texturas" "$(OutDir)Texturas"</Command>
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="Source Files\CubemapTextureLoader.cpp" />
+    <ClCompile Include="imgui\imgui.cpp" />
+    <ClCompile Include="imgui\imgui_draw.cpp" />
+    <ClCompile Include="imgui\imgui_impl_glfw.cpp" />
+    <ClCompile Include="imgui\imgui_impl_opengl3.cpp" />
+    <ClCompile Include="imgui\imgui_widgets.cpp" />
     <ClCompile Include="Source Files\main.cpp" />
     <ClCompile Include="Source Files\Camara.cpp" />
     <ClCompile Include="Source Files\EBO.cpp" />
@@ -185,6 +190,14 @@ xcopy /E /I /Y "$(ProjectDir)Texturas" "$(OutDir)Texturas"</Command>
     <ClInclude Include="Header Files\VAO.h" />
     <ClInclude Include="Header Files\VBO.h" />
     <ClInclude Include="Header Files\Vertex.h" />
+    <ClInclude Include="imgui\imconfig.h" />
+    <ClInclude Include="imgui\imgui.h" />
+    <ClInclude Include="imgui\imgui_impl_glfw.h" />
+    <ClInclude Include="imgui\imgui_impl_opengl3.h" />
+    <ClInclude Include="imgui\imgui_internal.h" />
+    <ClInclude Include="imgui\imstb_rectpack.h" />
+    <ClInclude Include="imgui\imstb_textedit.h" />
+    <ClInclude Include="imgui\imstb_truetype.h" />
     <ClInclude Include="Shader.h" />
     <ClInclude Include="Source Files\stb_image.h" />
   </ItemGroup>
@@ -212,7 +225,7 @@ xcopy /E /I /Y "$(ProjectDir)Texturas" "$(OutDir)Texturas"</Command>
     <None Include="Shaders\sphere.vert" />
   </ItemGroup>
   <ItemGroup>
-    <Image Include="Texturas\SkyboxCubemap\nubes.png" />
+    <Image Include="Texturas\Fonts\calibri.ttf" />
     <Image Include="Texturas\Skybox_Day\nx.png" />
     <Image Include="Texturas\Skybox_Day\ny.png" />
     <Image Include="Texturas\Skybox_Day\nz.png" />
@@ -225,20 +238,6 @@ xcopy /E /I /Y "$(ProjectDir)Texturas" "$(OutDir)Texturas"</Command>
     <Image Include="Texturas\Skybox_Nigth\px.png" />
     <Image Include="Texturas\Skybox_Nigth\py.png" />
     <Image Include="Texturas\Skybox_Nigth\pz.png" />
-    <Image Include="Textures\skybox.jpg" />
-    <Image Include="Texutras\skybox.jpg" />
-    <Image Include="Texutras\SkyboxCubemap\back.jpg" />
-    <Image Include="Texutras\SkyboxCubemap\bottom.jpg" />
-    <Image Include="Texutras\SkyboxCubemap\front.jpg" />
-    <Image Include="Texutras\SkyboxCubemap\left.jpg" />
-    <Image Include="Texutras\SkyboxCubemap\right.jpg" />
-    <Image Include="Texutras\SkyboxCubemap\top.jpg" />
-    <Image Include="Texturas\SkyboxCubemap\px.png" />
-    <Image Include="Texturas\SkyboxCubemap\nx.png" />
-    <Image Include="Texturas\SkyboxCubemap\py.png" />
-    <Image Include="Texturas\SkyboxCubemap\ny.png" />
-    <Image Include="Texturas\SkyboxCubemap\pz.png" />
-    <Image Include="Texturas\SkyboxCubemap\nz.png" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

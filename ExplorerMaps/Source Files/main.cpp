@@ -2,6 +2,7 @@
 
 //------- Ignore this ----------
 #include<algorithm>
+#include<cmath>
 #include<filesystem>
 #include<iomanip>
 #include<sstream>
@@ -21,6 +22,11 @@ extern "C"
 
 #include "Model.h"
 #include "Skybox.h"
+
+#define IMGUI_IMPL_OPENGL_LOADER_GLAD
+#include "imgui.h"
+#include "imgui_impl_glfw.h"
+#include "imgui_impl_opengl3.h"
 
 // --- Ventana / escena ----------------------------------
 const unsigned int width = 1920;
@@ -49,6 +55,7 @@ const glm::vec3 blockedZoneMax = glm::vec3(310.0f, -150.0f, 435.0f);
 
 // CICLO MUY RAPIDO PARA VIDEO
 const float dayNightSpeed = 0.20f;
+const bool useProceduralDaySkybox = true;
 
 const float SUN_SIZE = 90.0f;
 const float MOON_SIZE = 65.0f;
@@ -81,7 +88,8 @@ enum class EnvironmentMode
 {
     Auto,
     Day,
-    Night
+    Night,
+    Manual
 };
 
 struct EnvironmentMenuState
@@ -101,8 +109,21 @@ struct EnvironmentMenuState
     bool mouseLeftWasDown = false;
 };
 
+struct SkyPanelState
+{
+    bool open = false;
+    int selection = 0;
+    bool toggleWasDown = false;
+    bool upWasDown = false;
+    bool downWasDown = false;
+    bool leftWasDown = false;
+    bool rightWasDown = false;
+};
+
 constexpr int kEnvironmentMenuItemCount = 4;
 constexpr int kEnvironmentMenuExitIndex = 3;
+constexpr float kManualTimeStep = 1.0f / 24.0f;
+constexpr int kSkyPanelItemCount = 3;
 
 bool IsInsideRect(double px, double py, float x, float y, float w, float h)
 {
@@ -137,6 +158,7 @@ const char* EnvironmentModeName(EnvironmentMode mode)
     {
     case EnvironmentMode::Day: return "DIA";
     case EnvironmentMode::Night: return "NOCHE";
+    case EnvironmentMode::Manual: return "MANUAL";
     default: return "AUTO";
     }
 }
@@ -158,8 +180,39 @@ int EnvironmentSelectionFromMode(EnvironmentMode mode)
     {
     case EnvironmentMode::Day: return 0;
     case EnvironmentMode::Night: return 1;
+    case EnvironmentMode::Auto: return 2;
     default: return 2;
     }
+}
+
+float WrapTimeOfDay(float timeOfDay)
+{
+    const float wrapped = std::fmod(timeOfDay, 1.0f);
+    return wrapped < 0.0f ? wrapped + 1.0f : wrapped;
+}
+
+float TimeOfDayToSunAngle(float timeOfDay)
+{
+    return WrapTimeOfDay(timeOfDay) * 6.2831853f;
+}
+
+float TimeOfDayToClockHours(float timeOfDay)
+{
+    return WrapTimeOfDay(timeOfDay) * 24.0f + 6.0f;
+}
+
+std::string FormatTimeOfDay(float timeOfDay)
+{
+    float clockHours = std::fmod(TimeOfDayToClockHours(timeOfDay), 24.0f);
+    if (clockHours < 0.0f)
+        clockHours += 24.0f;
+
+    const int hours = static_cast<int>(clockHours);
+    const int minutes = static_cast<int>((clockHours - static_cast<float>(hours)) * 60.0f + 0.5f) % 60;
+
+    std::ostringstream stream;
+    stream << std::setfill('0') << std::setw(2) << hours << ":" << std::setw(2) << minutes;
+    return stream.str();
 }
 
 EnvironmentMode ResolveSkyboxMode(EnvironmentMode environmentMode, bool isDay)
@@ -279,7 +332,17 @@ bool HandleEnvironmentMenu(GLFWwindow* window, EnvironmentMenuState& menu, Envir
     return modeChanged;
 }
 
-void ApplyEnvironmentMode(EnvironmentMode mode, float& sunAngleRad, float& sunHeight)
+bool HandleSkyPanel(GLFWwindow* window, SkyPanelState& panel, EnvironmentMode& mode, float& manualTimeOfDay)
+{
+    const bool toggleDown = glfwGetKey(window, GLFW_KEY_F3) == GLFW_PRESS;
+    if (toggleDown && !panel.toggleWasDown)
+        panel.open = !panel.open;
+
+    panel.toggleWasDown = toggleDown;
+    return panel.open;
+}
+
+void ApplyEnvironmentMode(EnvironmentMode mode, float manualTimeOfDay, float& sunAngleRad, float& sunHeight)
 {
     if (mode == EnvironmentMode::Day)
     {
@@ -291,9 +354,14 @@ void ApplyEnvironmentMode(EnvironmentMode mode, float& sunAngleRad, float& sunHe
         sunAngleRad = 4.71239f;
         sunHeight = -1.0f;
     }
+    else if (mode == EnvironmentMode::Manual)
+    {
+        sunAngleRad = TimeOfDayToSunAngle(manualTimeOfDay);
+        sunHeight = std::sin(sunAngleRad);
+    }
 }
 
-std::string BuildEnvironmentTitle(const EnvironmentMenuState& menu, EnvironmentMode mode, const glm::vec3& normPos)
+std::string BuildEnvironmentTitle(const EnvironmentMenuState& menu, EnvironmentMode mode, float manualTimeOfDay, const glm::vec3& normPos)
 {
     std::ostringstream title;
     title << std::fixed << std::setprecision(3);
@@ -305,12 +373,13 @@ std::string BuildEnvironmentTitle(const EnvironmentMenuState& menu, EnvironmentM
         const char* option2 = menu.selection == 2 ? "> AUTO" : "  AUTO";
         const char* option3 = menu.selection == 3 ? "> SALIR" : "  SALIR";
         title << "MENU AMBIENTE | " << option0 << " | " << option1 << " | " << option2 << " | " << option3
-              << " | Flechas/W/S: mover | Enter: aplicar | Esc: cerrar";
+              << " | Enter: aplicar | Esc: cerrar";
     }
     else
     {
         title << "Ambiente: " << EnvironmentModeName(mode)
-              << " | Esc: menu | X:" << normPos.x << " Y:" << normPos.y << " Z:" << normPos.z;
+              << " | Hora: " << FormatTimeOfDay(manualTimeOfDay)
+              << " | Esc: menu | F3: panel cielo | X:" << normPos.x << " Y:" << normPos.y << " Z:" << normPos.z;
     }
 
     return title.str();
@@ -379,7 +448,7 @@ void AddOverlayText(std::vector<OverlayVertex>& vertices, const std::string& tex
     }
 }
 
-void DrawEnvironmentMenu(const EnvironmentMenuState& menu, EnvironmentMode mode, Shader& overlayShader, GLuint overlayVAO, GLuint overlayVBO)
+void DrawEnvironmentMenu(const EnvironmentMenuState& menu, EnvironmentMode mode, float manualTimeOfDay, Shader& overlayShader, GLuint overlayVAO, GLuint overlayVBO)
 {
     std::vector<OverlayVertex> vertices;
 
@@ -463,20 +532,179 @@ void DrawEnvironmentMenu(const EnvironmentMenuState& menu, EnvironmentMode mode,
     glDisable(GL_BLEND);
     glEnable(GL_DEPTH_TEST);
 }
+
+void DrawSkyControlPanel(const SkyPanelState& panel, EnvironmentMode mode, float manualTimeOfDay, Shader& overlayShader, GLuint overlayVAO, GLuint overlayVBO)
+{
+    if (!panel.open)
+        return;
+
+    std::vector<OverlayVertex> vertices;
+    const glm::vec4 panelColor(0.07f, 0.09f, 0.13f, 0.86f);
+    const glm::vec4 topBar(0.11f, 0.78f, 0.84f, 0.96f);
+    const glm::vec4 textMain(0.92f, 0.94f, 0.98f, 1.0f);
+    const glm::vec4 textMuted(0.67f, 0.73f, 0.83f, 1.0f);
+    const glm::vec4 accent(1.0f, 0.82f, 0.22f, 1.0f);
+    const glm::vec4 rowColor(0.09f, 0.11f, 0.16f, 0.92f);
+    const glm::vec4 selectedColor(0.16f, 0.24f, 0.38f, 0.96f);
+
+    const float panelX = 48.0f;
+    const float panelY = 64.0f;
+    const float panelW = 300.0f;
+    const float panelH = 248.0f;
+
+    AddOverlayRect(vertices, panelX, panelY, panelW, panelH, panelColor);
+    AddOverlayRect(vertices, panelX, panelY, panelW, 10.0f, topBar);
+    AddOverlayText(vertices, "TerrainEngine OpenGL style", panelX + 14.0f, panelY + 27.0f, 0.38f, textMuted);
+    AddOverlayText(vertices, "Sky controls", panelX + 14.0f, panelY + 48.0f, 0.50f, accent);
+
+    const float rowX = panelX + 14.0f;
+    const float rowW = panelW - 28.0f;
+
+    AddOverlayRect(vertices, rowX, panelY + 68.0f, rowW, 24.0f, panel.selection == 0 ? selectedColor : rowColor);
+    AddOverlayText(vertices, "Mode", rowX + 10.0f, panelY + 83.0f, 0.42f, textMain);
+    AddOverlayText(vertices, EnvironmentModeName(mode), rowX + 180.0f, panelY + 83.0f, 0.42f, panel.selection == 0 ? accent : textMuted);
+
+    AddOverlayRect(vertices, rowX, panelY + 100.0f, rowW, 24.0f, panel.selection == 1 ? selectedColor : rowColor);
+    AddOverlayText(vertices, "Hour", rowX + 10.0f, panelY + 115.0f, 0.42f, textMain);
+    AddOverlayText(vertices, FormatTimeOfDay(manualTimeOfDay), rowX + 180.0f, panelY + 115.0f, 0.42f, panel.selection == 1 ? accent : textMuted);
+
+    AddOverlayRect(vertices, rowX, panelY + 138.0f, rowW, 54.0f, panel.selection == 2 ? selectedColor : rowColor);
+    AddOverlayText(vertices, "Sky model", rowX + 10.0f, panelY + 153.0f, 0.42f, textMain);
+    AddOverlayText(vertices, "Procedural repo-like", rowX + 112.0f, panelY + 153.0f, 0.38f, accent);
+    AddOverlayText(vertices, "No cubemap textures", rowX + 10.0f, panelY + 173.0f, 0.34f, textMuted);
+    AddOverlayText(vertices, "Day/night from shader", rowX + 128.0f, panelY + 173.0f, 0.34f, textMuted);
+
+    AddOverlayText(vertices, "F3 toggle", panelX + 14.0f, panelY + 220.0f, 0.34f, textMuted);
+    AddOverlayText(vertices, "W/S select", panelX + 84.0f, panelY + 220.0f, 0.34f, textMuted);
+    AddOverlayText(vertices, "A/D edit", panelX + 168.0f, panelY + 220.0f, 0.34f, textMuted);
+
+    glDisable(GL_DEPTH_TEST);
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+    overlayShader.Activate();
+    glBindVertexArray(overlayVAO);
+    glBindBuffer(GL_ARRAY_BUFFER, overlayVBO);
+    glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(OverlayVertex), vertices.data(), GL_DYNAMIC_DRAW);
+    glDrawArrays(GL_TRIANGLES, 0, static_cast<GLsizei>(vertices.size()));
+    glBindVertexArray(0);
+
+    glDisable(GL_BLEND);
+    glEnable(GL_DEPTH_TEST);
+}
+
+void SetupSkyPanelStyle()
+{
+    ImGuiStyle& style = ImGui::GetStyle();
+    style.WindowRounding = 4.0f;
+    style.FrameRounding = 2.0f;
+    style.GrabRounding = 2.0f;
+    style.ScrollbarRounding = 2.0f;
+    style.WindowBorderSize = 1.0f;
+    style.FrameBorderSize = 0.0f;
+    style.WindowPadding = ImVec2(10.0f, 8.0f);
+    style.FramePadding = ImVec2(6.0f, 4.0f);
+    style.ItemSpacing = ImVec2(8.0f, 6.0f);
+
+    ImVec4* colors = style.Colors;
+    colors[ImGuiCol_WindowBg] = ImVec4(0.06f, 0.08f, 0.12f, 0.90f);
+    colors[ImGuiCol_TitleBg] = ImVec4(0.06f, 0.08f, 0.12f, 0.96f);
+    colors[ImGuiCol_TitleBgActive] = ImVec4(0.08f, 0.65f, 0.78f, 0.96f);
+    colors[ImGuiCol_Header] = ImVec4(0.13f, 0.17f, 0.24f, 0.92f);
+    colors[ImGuiCol_HeaderHovered] = ImVec4(0.18f, 0.24f, 0.34f, 0.98f);
+    colors[ImGuiCol_HeaderActive] = ImVec4(0.22f, 0.30f, 0.44f, 1.0f);
+    colors[ImGuiCol_Button] = ImVec4(0.13f, 0.17f, 0.24f, 0.92f);
+    colors[ImGuiCol_ButtonHovered] = ImVec4(0.20f, 0.26f, 0.38f, 0.98f);
+    colors[ImGuiCol_ButtonActive] = ImVec4(0.22f, 0.32f, 0.48f, 1.0f);
+    colors[ImGuiCol_FrameBg] = ImVec4(0.10f, 0.12f, 0.18f, 0.95f);
+    colors[ImGuiCol_FrameBgHovered] = ImVec4(0.14f, 0.18f, 0.28f, 1.0f);
+    colors[ImGuiCol_FrameBgActive] = ImVec4(0.18f, 0.24f, 0.34f, 1.0f);
+    colors[ImGuiCol_SliderGrab] = ImVec4(0.95f, 0.77f, 0.24f, 0.96f);
+    colors[ImGuiCol_SliderGrabActive] = ImVec4(1.0f, 0.86f, 0.34f, 1.0f);
+    colors[ImGuiCol_Text] = ImVec4(0.93f, 0.94f, 0.98f, 1.0f);
+    colors[ImGuiCol_TextDisabled] = ImVec4(0.58f, 0.64f, 0.74f, 1.0f);
+    colors[ImGuiCol_CheckMark] = ImVec4(0.95f, 0.77f, 0.24f, 1.0f);
+}
+
+void DrawSkyControlImGui(SkyPanelState& panel, EnvironmentMode& mode, float& manualTimeOfDay, SkyCloudSettings& cloudSettings)
+{
+    if (!panel.open)
+        return;
+
+    ImGui::SetNextWindowPos(ImVec2(48.0f, 64.0f), ImGuiCond_Always);
+    ImGui::SetNextWindowSize(ImVec2(310.0f, 520.0f), ImGuiCond_Always);
+    ImGuiWindowFlags flags = ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse;
+
+    bool open = panel.open;
+    if (!ImGui::Begin("Scene controls", &open, flags))
+    {
+        ImGui::End();
+        panel.open = open;
+        return;
+    }
+    panel.open = open;
+
+    ImGui::TextColored(ImVec4(1.0f, 0.82f, 0.22f, 1.0f), "Clouds controls");
+
+    static const char* modeNames[] = { "AUTO", "DIA", "NOCHE", "MANUAL" };
+    int modeIndex = mode == EnvironmentMode::Auto ? 0 : mode == EnvironmentMode::Day ? 1 : mode == EnvironmentMode::Night ? 2 : 3;
+    if (ImGui::SliderInt("Mode", &modeIndex, 0, 3, modeNames[modeIndex]))
+        mode = modeIndex == 0 ? EnvironmentMode::Auto : modeIndex == 1 ? EnvironmentMode::Day : modeIndex == 2 ? EnvironmentMode::Night : EnvironmentMode::Manual;
+
+    float hour = WrapTimeOfDay(manualTimeOfDay);
+    if (ImGui::SliderFloat("Hour", &hour, 0.0f, 1.0f, FormatTimeOfDay(hour).c_str()))
+    {
+        manualTimeOfDay = hour;
+        mode = EnvironmentMode::Manual;
+    }
+
+    ImGui::SliderFloat("Coverage", &cloudSettings.coverage, 0.20f, 1.20f);
+    ImGui::SliderFloat("Speed", &cloudSettings.speed, 0.10f, 3.50f);
+    ImGui::SliderFloat("Crispiness", &cloudSettings.crispiness, 0.35f, 2.50f);
+    ImGui::SliderFloat("Curliness", &cloudSettings.curliness, 0.10f, 2.50f);
+    ImGui::SliderFloat("Density", &cloudSettings.density, 0.20f, 1.60f);
+
+    if (ImGui::Button("Default clouds"))
+    {
+        cloudSettings.coverage = 0.62f;
+        cloudSettings.speed = 1.0f;
+        cloudSettings.crispiness = 1.0f;
+        cloudSettings.curliness = 0.75f;
+        cloudSettings.density = 0.95f;
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Heavy clouds"))
+    {
+        cloudSettings.coverage = 0.98f;
+        cloudSettings.speed = 1.25f;
+        cloudSettings.crispiness = 0.85f;
+        cloudSettings.curliness = 1.10f;
+        cloudSettings.density = 1.35f;
+    }
+
+    ImGui::Text("Current time: %s", FormatTimeOfDay(manualTimeOfDay).c_str());
+    ImGui::Text("Sky model: procedural repo-like");
+    ImGui::Separator();
+
+    ImGui::TextColored(ImVec4(1.0f, 0.82f, 0.22f, 1.0f), "Sky controls");
+    ImGui::Text("No cubemap textures");
+    ImGui::Text("Day/night generated in shader");
+    ImGui::Text("Mouse enabled while this panel is open");
+    ImGui::Separator();
+
+    ImGui::TextColored(ImVec4(1.0f, 0.82f, 0.22f, 1.0f), "Shortcuts");
+    ImGui::BulletText("F3 abre/cierra este panel");
+    ImGui::BulletText("ESC abre el menu clasico");
+    ImGui::BulletText("J/L mueve el tiempo rapido");
+    ImGui::BulletText("Mouse controla sliders y botones");
+    ImGui::Separator();
+
+    ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
+    ImGui::End();
+}
 std::vector<std::string> GetSkyboxFacePaths(EnvironmentMode mode)
 {
-    const char* folder = mode == EnvironmentMode::Night
-        ? "Texturas/Skybox_Nigth"
-        : "Texturas/Skybox_Day";
-
-    return {
-        std::string(folder) + "/px.png",
-        std::string(folder) + "/nx.png",
-        std::string(folder) + "/py.png",
-        std::string(folder) + "/ny.png",
-        std::string(folder) + "/pz.png",
-        std::string(folder) + "/nz.png"
-    };
+    return {};
 }
 void createSphere(GLuint& VAO, GLuint& VBO, GLuint& EBO, int sectors, float radius) {
     std::vector<float> vertices;
@@ -568,6 +796,15 @@ int main()
     gladLoadGL();
     glViewport(0, 0, width, height);
 
+    IMGUI_CHECKVERSION();
+    ImGui::CreateContext();
+    SetupSkyPanelStyle();
+    ImGuiIO& imguiIo = ImGui::GetIO();
+    imguiIo.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+    imguiIo.Fonts->AddFontFromFileTTF("Texturas/Fonts/calibri.ttf", 18.0f);
+    ImGui_ImplGlfw_InitForOpenGL(window, true);
+    ImGui_ImplOpenGL3_Init("#version 330");
+
     Shader shaderProgram("Shaders/default.vert", "Shaders/default.frag");
     Shader lightShader("Shaders/light.vert", "Shaders/light.frag");
     Shader sphereShader("Shaders/sphere.vert", "Shaders/sphere.frag");
@@ -638,6 +875,8 @@ int main()
     float sunHeight = 0.0f;
     float dayFactor = 0.0f;
     float nightFactor = 0.0f;
+    float manualTimeOfDay = 0.18f;
+    SkyCloudSettings cloudSettings;
 
     glm::vec3 sunPos;
     glm::vec3 moonPos;
@@ -645,6 +884,7 @@ int main()
 
     EnvironmentMode environmentMode = EnvironmentMode::Auto;
     EnvironmentMenuState environmentMenu;
+    SkyPanelState skyPanel;
     bool menuCursorVisible = false;
     while (!glfwWindowShouldClose(window))
     {
@@ -652,20 +892,26 @@ int main()
         float deltaTime = currentFrame - lastFrame;
         lastFrame = currentFrame;
 
+        ImGui_ImplOpenGL3_NewFrame();
+        ImGui_ImplGlfw_NewFrame();
+        ImGui::NewFrame();
+
         bool shouldExit = false;
         HandleEnvironmentMenu(window, environmentMenu, environmentMode, shouldExit);
+        HandleSkyPanel(window, skyPanel, environmentMode, manualTimeOfDay);
         if (shouldExit)
         {
             glfwSetWindowShouldClose(window, true);
         }
 
-        if (environmentMenu.open && !menuCursorVisible)
+        const bool wantsUiCursor = environmentMenu.open || skyPanel.open;
+        if (wantsUiCursor && !menuCursorVisible)
         {
             glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
             menuCursorVisible = true;
             camera.firstClick = true;
         }
-        else if (!environmentMenu.open && menuCursorVisible)
+        else if (!wantsUiCursor && menuCursorVisible)
         {
             glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
             menuCursorVisible = false;
@@ -676,13 +922,14 @@ int main()
         float sunAngleRad = timeOfDayAngle;
 
         sunHeight = std::sin(sunAngleRad);
-        ApplyEnvironmentMode(environmentMode, sunAngleRad, sunHeight);
+        ApplyEnvironmentMode(environmentMode, manualTimeOfDay, sunAngleRad, sunHeight);
         isDay = sunHeight > 0.0f;
 
         const float skyBlendFactor = environmentMode == EnvironmentMode::Day
             ? 0.0f
             : (environmentMode == EnvironmentMode::Night ? 1.0f : ComputeSkyBlendFactor(sunHeight));
         skybox.SetBlendFactor(skyBlendFactor);
+        skybox.SetCloudSettings(cloudSettings);
 
         dayFactor = glm::clamp(sunHeight + 0.2f, 0.05f, 1.0f);
         nightFactor = glm::clamp(-sunHeight + 0.1f, 0.0f, 1.0f);
@@ -791,8 +1038,20 @@ int main()
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         const glm::vec3 prevPos = camera.Position;
-        if (!environmentMenu.open)
+        if (!environmentMenu.open && !skyPanel.open)
+        {
+            if (environmentMode == EnvironmentMode::Manual && !skyPanel.open)
+            {
+                const bool decreaseTime = glfwGetKey(window, GLFW_KEY_J) == GLFW_PRESS || glfwGetKey(window, GLFW_KEY_KP_4) == GLFW_PRESS;
+                const bool increaseTime = glfwGetKey(window, GLFW_KEY_L) == GLFW_PRESS || glfwGetKey(window, GLFW_KEY_KP_6) == GLFW_PRESS;
+                if (decreaseTime)
+                    manualTimeOfDay = WrapTimeOfDay(manualTimeOfDay - deltaTime * 0.08f);
+                if (increaseTime)
+                    manualTimeOfDay = WrapTimeOfDay(manualTimeOfDay + deltaTime * 0.08f);
+            }
+
             camera.Inputs(window, deltaTime);
+        }
 
         if (!camera.flyMode)
         {
@@ -844,8 +1103,7 @@ int main()
 
         model.Draw(shaderProgram, camera, modelTransform);
 
-        if (nightFactor > 0.02f)
-        {
+        if (nightFactor > 0.02f) {
             sphereShader.Activate();
             glUniform1f(glGetUniformLocation(sphereShader.ID, "useTexture"), 0.0f);
             glUniform1f(glGetUniformLocation(sphereShader.ID, "unlit"), 1.0f);
@@ -859,12 +1117,12 @@ int main()
             glBindVertexArray(lampGlowVAO);
             for (int i = 0; i < lampLightCount; ++i)
             {
-                glm::mat4 coreModel =
+                glm::mat4 lampModel =
                     glm::translate(glm::mat4(1.0f), lampLightPositions[i]) *
                     glm::scale(glm::mat4(1.0f), glm::vec3(lampCoreSize));
                 glUniform3f(glGetUniformLocation(sphereShader.ID, "color"), 1.0f, 0.96f, 0.88f);
                 glUniform1f(glGetUniformLocation(sphereShader.ID, "alpha"), glm::clamp(nightFactor * 1.4f, 0.0f, 1.0f));
-                glUniformMatrix4fv(glGetUniformLocation(sphereShader.ID, "model"), 1, GL_FALSE, glm::value_ptr(coreModel));
+                glUniformMatrix4fv(glGetUniformLocation(sphereShader.ID, "model"), 1, GL_FALSE, glm::value_ptr(lampModel));
                 glDrawElements(GL_TRIANGLES, lampGlowIndexCount, GL_UNSIGNED_INT, 0);
             }
             glUniform1f(glGetUniformLocation(sphereShader.ID, "unlit"), 0.0f);
@@ -916,13 +1174,18 @@ int main()
         }
 
         if (!useFastRenderMode)
-            skybox.Draw(camera, cameraFov, cameraNearPlane, cameraFarPlane);
+            skybox.Draw(camera, cameraFov, cameraNearPlane, cameraFarPlane, currentFrame, sunHeight);
 
-        DrawEnvironmentMenu(environmentMenu, environmentMode, overlayShader, overlayVAO, overlayVBO);
+        DrawEnvironmentMenu(environmentMenu, environmentMode, manualTimeOfDay, overlayShader, overlayVAO, overlayVBO);
+        DrawSkyControlImGui(skyPanel, environmentMode, manualTimeOfDay, cloudSettings);
+        ImGui::Render();
+        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 
         if (showCoordinatesInWindowTitle && currentFrame - lastTitleUpdate >= 0.1f)
         {
-            const std::string title = BuildEnvironmentTitle(environmentMenu, environmentMode, camera.Position);
+            const glm::vec3 normPos = glm::clamp(camera.Position / targetSceneRadius, glm::vec3(-1.0f), glm::vec3(1.0f));
+
+            const std::string title = BuildEnvironmentTitle(environmentMenu, environmentMode, manualTimeOfDay, normPos);
             glfwSetWindowTitle(window, title.c_str());
             lastTitleUpdate = currentFrame;
         }
@@ -944,6 +1207,9 @@ int main()
     moonTexture.Delete();
     glDeleteVertexArrays(1, &overlayVAO);
     glDeleteBuffers(1, &overlayVBO);
+    ImGui_ImplOpenGL3_Shutdown();
+    ImGui_ImplGlfw_Shutdown();
+    ImGui::DestroyContext();
 
     glfwDestroyWindow(window);
     glfwTerminate();

@@ -140,7 +140,13 @@ void Skybox::SetBlendFactor(float factor)
 {
 	blendFactor = glm::clamp(factor, 0.0f, 1.0f);
 }
-void Skybox::Draw(const Camera& camera, float FOVdeg, float nearPlane, float farPlane)
+
+void Skybox::SetCloudSettings(const SkyCloudSettings& settings)
+{
+	cloudSettings = settings;
+}
+
+void Skybox::Draw(const Camera& camera, float FOVdeg, float nearPlane, float farPlane, float time, float sunHeight)
 {
 	glDepthFunc(GL_LEQUAL);
 
@@ -154,6 +160,13 @@ void Skybox::Draw(const Camera& camera, float FOVdeg, float nearPlane, float far
 	glUniform1i(glGetUniformLocation(shader.ID, "daySkybox"), 0);
 	glUniform1i(glGetUniformLocation(shader.ID, "nightSkybox"), 1);
 	glUniform1f(glGetUniformLocation(shader.ID, "blendFactor"), blendFactor);
+	glUniform1f(glGetUniformLocation(shader.ID, "time"), time);
+	glUniform1f(glGetUniformLocation(shader.ID, "sunHeight"), sunHeight);
+	glUniform1f(glGetUniformLocation(shader.ID, "cloudCoverage"), cloudSettings.coverage);
+	glUniform1f(glGetUniformLocation(shader.ID, "cloudSpeed"), cloudSettings.speed);
+	glUniform1f(glGetUniformLocation(shader.ID, "cloudCrispiness"), cloudSettings.crispiness);
+	glUniform1f(glGetUniformLocation(shader.ID, "cloudCurliness"), cloudSettings.curliness);
+	glUniform1f(glGetUniformLocation(shader.ID, "cloudDensity"), cloudSettings.density);
 
 	glBindVertexArray(VAO);
 	glActiveTexture(GL_TEXTURE0);
