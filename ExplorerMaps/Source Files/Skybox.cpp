@@ -115,6 +115,27 @@ Skybox::~Skybox()
 	shader.Delete();
 }
 
+
+void Skybox::SetFaces(const std::vector<std::string>& facePaths)
+{
+	GLuint newTexture = 0;
+	try
+	{
+		newTexture = LoadCubemapTexture(facePaths);
+	}
+	catch (...)
+	{
+		return;
+	}
+
+	if (newTexture == 0)
+		return;
+
+	if (cubemapTexture != 0)
+		glDeleteTextures(1, &cubemapTexture);
+
+	cubemapTexture = newTexture;
+}
 void Skybox::Draw(const Camera& camera, float FOVdeg, float nearPlane, float farPlane)
 {
 	glDepthFunc(GL_LEQUAL);

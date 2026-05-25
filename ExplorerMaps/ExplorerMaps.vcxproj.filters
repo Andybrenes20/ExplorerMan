@@ -161,6 +161,8 @@
     <None Include="Shaders\sphere.vert">
       <Filter>Resource Files\Shaders</Filter>
     </None>
+    <None Include="Shaders\menu.vert" />
+    <None Include="Shaders\menu.frag" />
   </ItemGroup>
   <ItemGroup>
     <Image Include="Texutras\skybox.jpg">
@@ -183,6 +185,12 @@
     </Image>
     <Image Include="Texutras\SkyboxCubemap\top.jpg">
       <Filter>Resource Files\Textures\SkyboxCubemap</Filter>
+    </Image>
+    <Image Include="Texturas\SkyboxCubemap\nubes.png">
+      <Filter>Resource Files</Filter>
+    </Image>
+    <Image Include="Textures\skybox.jpg">
+      <Filter>Resource Files</Filter>
     </Image>
   </ItemGroup>
 </Project>

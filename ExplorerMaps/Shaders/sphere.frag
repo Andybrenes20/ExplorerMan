@@ -3,16 +3,33 @@ out vec4 FragColor;
 
 in vec3 FragPos;
 in vec3 Normal;
+in vec3 LocalNormal;
 
 uniform vec3 color;
 uniform vec3 lightPos;
 uniform vec3 viewPos;
 uniform float sunHeight;
 uniform float isDay;
+uniform float useTexture;
+uniform sampler2D sphereTexture;
+
+const float PI = 3.14159265359;
 
 void main()
 {
     vec3 norm = normalize(Normal);
+    vec3 baseColor = color;
+
+    if (useTexture > 0.5) {
+        vec2 moonUv = vec2(
+            0.5 + atan(LocalNormal.z, LocalNormal.x) / (2.0 * PI),
+            0.5 - asin(clamp(LocalNormal.y, -1.0, 1.0)) / PI
+        );
+
+        baseColor = texture(sphereTexture, moonUv).rgb;
+        baseColor = mix(baseColor, color, 0.18);
+    }
+
     vec3 lightDir = normalize(lightPos - FragPos);
     vec3 viewDir = normalize(viewPos - FragPos);
     vec3 reflectDir = reflect(-lightDir, norm);
@@ -20,8 +37,8 @@ void main()
     float diff = max(dot(norm, lightDir), 0.0);
     float spec = pow(max(dot(viewDir, reflectDir), 0.0), 32.0);
     
-    vec3 ambient = color * 0.3;
-    vec3 diffuse = color * diff * 0.8;
+    vec3 ambient = baseColor * 0.3;
+    vec3 diffuse = baseColor * diff * 0.8;
     vec3 specular = vec3(1.0, 0.95, 0.85) * spec * 0.5;
     
     vec3 result = ambient + diffuse + specular;

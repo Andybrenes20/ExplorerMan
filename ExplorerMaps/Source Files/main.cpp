@@ -1,10 +1,11 @@
-﻿#define _CRT_SECURE_NO_WARNINGS
+#define _CRT_SECURE_NO_WARNINGS
 
 //------- Ignore this ----------
 #include<algorithm>
 #include<filesystem>
 #include<iomanip>
 #include<sstream>
+#include<vector>
 namespace fs = std::filesystem;
 //------------------------------
 
@@ -19,7 +20,7 @@ extern "C"
 #include "Model.h"
 #include "Skybox.h"
 
-// ─── Ventana / escena ──────────────────────────────────
+// --- Ventana / escena ----------------------------------
 const unsigned int width = 1920;
 const unsigned int height = 1080;
 const float targetSceneRadius = 1800.0f;
@@ -29,15 +30,15 @@ const float cameraFarPlane = 6000.0f;
 const float celestialOrbitRadius = 2800.0f;
 const float maxSunHeight = 2000.0f;
 
-// ─── Caminar ───────────────────────────────────────────
+// --- Caminar -------------------------------------------
 const float walkEyeHeight = 6.0f;
 const float walkProbeRadius = 8.0f;
 const float walkMaxStepUp = 12.0f;
 const float walkMaxDropDown = 45.0f;
 const float walkMaxSlopeDegrees = 68.0f;
-const float walkSpeed = 85.0f;
+const float walkSpeed = 30.0f;
 
-// ─── Opciones ──────────────────────────────────────────
+// --- Opciones ------------------------------------------
 const bool showCoordinatesInWindowTitle = true;
 const bool useFastRenderMode = false;
 const glm::vec3 blockedZoneMin = glm::vec3(240.0f, -260.0f, 360.0f);
@@ -49,6 +50,353 @@ const float dayNightSpeed = 0.20f;
 const float SUN_SIZE = 90.0f;
 const float MOON_SIZE = 65.0f;
 
+enum class EnvironmentMode
+{
+    Auto,
+    Day,
+    Night
+};
+
+struct EnvironmentMenuState
+{
+    bool open = false;
+    int selection = 0;
+    bool tabWasDown = false;
+    bool upWasDown = false;
+    bool downWasDown = false;
+    bool enterWasDown = false;
+    bool escapeWasDown = false;
+    bool gamepadOptionsWasDown = false;
+    bool gamepadUpWasDown = false;
+    bool gamepadDownWasDown = false;
+    bool gamepadAcceptWasDown = false;
+    bool gamepadCancelWasDown = false;
+};
+
+const char* EnvironmentModeName(EnvironmentMode mode)
+{
+    switch (mode)
+    {
+    case EnvironmentMode::Day: return "DIA";
+    case EnvironmentMode::Night: return "NOCHE";
+    default: return "AUTO";
+    }
+}
+
+EnvironmentMode EnvironmentModeFromSelection(int selection)
+{
+    switch (selection)
+    {
+    case 0: return EnvironmentMode::Day;
+    case 1: return EnvironmentMode::Night;
+    default: return EnvironmentMode::Auto;
+    }
+}
+
+int EnvironmentSelectionFromMode(EnvironmentMode mode)
+{
+    switch (mode)
+    {
+    case EnvironmentMode::Day: return 0;
+    case EnvironmentMode::Night: return 1;
+    default: return 2;
+    }
+}
+
+bool HandleEnvironmentMenu(GLFWwindow* window, EnvironmentMenuState& menu, EnvironmentMode& mode)
+{
+    const bool tabDown = glfwGetKey(window, GLFW_KEY_TAB) == GLFW_PRESS;
+    const bool upDown = glfwGetKey(window, GLFW_KEY_UP) == GLFW_PRESS || glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS;
+    const bool downDown = glfwGetKey(window, GLFW_KEY_DOWN) == GLFW_PRESS || glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS;
+    const bool enterDown = glfwGetKey(window, GLFW_KEY_ENTER) == GLFW_PRESS || glfwGetKey(window, GLFW_KEY_KP_ENTER) == GLFW_PRESS;
+    const bool escapeDown = glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS;
+    bool gamepadOptionsDown = false;
+    bool gamepadUpDown = false;
+    bool gamepadDownDown = false;
+    bool gamepadAcceptDown = false;
+    bool gamepadCancelDown = false;
+    bool modeChanged = false;
+
+    if (glfwJoystickIsGamepad(GLFW_JOYSTICK_1))
+    {
+        GLFWgamepadstate state;
+        if (glfwGetGamepadState(GLFW_JOYSTICK_1, &state))
+        {
+            const float stickDeadzone = 0.55f;
+            gamepadOptionsDown = state.buttons[GLFW_GAMEPAD_BUTTON_START] == GLFW_PRESS;
+            gamepadUpDown = state.buttons[GLFW_GAMEPAD_BUTTON_DPAD_UP] == GLFW_PRESS ||
+                state.axes[GLFW_GAMEPAD_AXIS_LEFT_Y] < -stickDeadzone;
+            gamepadDownDown = state.buttons[GLFW_GAMEPAD_BUTTON_DPAD_DOWN] == GLFW_PRESS ||
+                state.axes[GLFW_GAMEPAD_AXIS_LEFT_Y] > stickDeadzone;
+            gamepadAcceptDown = state.buttons[GLFW_GAMEPAD_BUTTON_A] == GLFW_PRESS;
+            gamepadCancelDown = state.buttons[GLFW_GAMEPAD_BUTTON_B] == GLFW_PRESS;
+        }
+    }
+
+    if ((tabDown && !menu.tabWasDown) || (gamepadOptionsDown && !menu.gamepadOptionsWasDown))
+    {
+        menu.open = !menu.open;
+        menu.selection = EnvironmentSelectionFromMode(mode);
+    }
+
+    if (menu.open)
+    {
+        if ((upDown && !menu.upWasDown) || (gamepadUpDown && !menu.gamepadUpWasDown))
+            menu.selection = (menu.selection + 2) % 3;
+
+        if ((downDown && !menu.downWasDown) || (gamepadDownDown && !menu.gamepadDownWasDown))
+            menu.selection = (menu.selection + 1) % 3;
+
+        if ((enterDown && !menu.enterWasDown) || (gamepadAcceptDown && !menu.gamepadAcceptWasDown))
+        {
+            mode = EnvironmentModeFromSelection(menu.selection);
+            menu.open = false;
+            modeChanged = true;
+        }
+
+        if ((escapeDown && !menu.escapeWasDown) || (gamepadCancelDown && !menu.gamepadCancelWasDown))
+            menu.open = false;
+    }
+
+    menu.tabWasDown = tabDown;
+    menu.upWasDown = upDown;
+    menu.downWasDown = downDown;
+    menu.enterWasDown = enterDown;
+    menu.escapeWasDown = escapeDown;
+    menu.gamepadOptionsWasDown = gamepadOptionsDown;
+    menu.gamepadUpWasDown = gamepadUpDown;
+    menu.gamepadDownWasDown = gamepadDownDown;
+    menu.gamepadAcceptWasDown = gamepadAcceptDown;
+    menu.gamepadCancelWasDown = gamepadCancelDown;
+
+    return modeChanged;
+}
+
+void ApplyEnvironmentMode(EnvironmentMode mode, float& sunAngleRad, float& sunHeight)
+{
+    if (mode == EnvironmentMode::Day)
+    {
+        sunAngleRad = 1.5708f;
+        sunHeight = 1.0f;
+    }
+    else if (mode == EnvironmentMode::Night)
+    {
+        sunAngleRad = 4.71239f;
+        sunHeight = -1.0f;
+    }
+}
+
+std::string BuildEnvironmentTitle(const EnvironmentMenuState& menu, EnvironmentMode mode, const glm::vec3& normPos)
+{
+    std::ostringstream title;
+    title << std::fixed << std::setprecision(3);
+
+    if (menu.open)
+    {
+        const char* option0 = menu.selection == 0 ? "> DIA" : "  DIA";
+        const char* option1 = menu.selection == 1 ? "> NOCHE" : "  NOCHE";
+        const char* option2 = menu.selection == 2 ? "> AUTO" : "  AUTO";
+        title << "MENU AMBIENTE | " << option0 << " | " << option1 << " | " << option2
+              << " | Flechas/W/S: mover | Enter: aplicar | Tab/Esc: cerrar";
+    }
+    else
+    {
+        title << "Ambiente: " << EnvironmentModeName(mode)
+              << " | Tab: menu | X:" << normPos.x << " Y:" << normPos.y << " Z:" << normPos.z;
+    }
+
+    return title.str();
+}
+
+struct OverlayVertex
+{
+    float x;
+    float y;
+    float r;
+    float g;
+    float b;
+    float a;
+};
+
+const char** GetMenuGlyph(char c)
+{
+    static const char* space[7] = { "00000", "00000", "00000", "00000", "00000", "00000", "00000" };
+    static const char* a[7] = { "01110", "10001", "10001", "11111", "10001", "10001", "10001" };
+    static const char* b[7] = { "11110", "10001", "10001", "11110", "10001", "10001", "11110" };
+    static const char* cGlyph[7] = { "01111", "10000", "10000", "10000", "10000", "10000", "01111" };
+    static const char* d[7] = { "11110", "10001", "10001", "10001", "10001", "10001", "11110" };
+    static const char* e[7] = { "11111", "10000", "10000", "11110", "10000", "10000", "11111" };
+    static const char* h[7] = { "10001", "10001", "10001", "11111", "10001", "10001", "10001" };
+    static const char* i[7] = { "11111", "00100", "00100", "00100", "00100", "00100", "11111" };
+    static const char* l[7] = { "10000", "10000", "10000", "10000", "10000", "10000", "11111" };
+    static const char* m[7] = { "10001", "11011", "10101", "10101", "10001", "10001", "10001" };
+    static const char* n[7] = { "10001", "11001", "10101", "10011", "10001", "10001", "10001" };
+    static const char* o[7] = { "01110", "10001", "10001", "10001", "10001", "10001", "01110" };
+    static const char* p[7] = { "11110", "10001", "10001", "11110", "10000", "10000", "10000" };
+    static const char* r[7] = { "11110", "10001", "10001", "11110", "10100", "10010", "10001" };
+    static const char* s[7] = { "01111", "10000", "10000", "01110", "00001", "00001", "11110" };
+    static const char* t[7] = { "11111", "00100", "00100", "00100", "00100", "00100", "00100" };
+    static const char* u[7] = { "10001", "10001", "10001", "10001", "10001", "10001", "01110" };
+    static const char* v[7] = { "10001", "10001", "10001", "10001", "10001", "01010", "00100" };
+    static const char* w[7] = { "10001", "10001", "10001", "10101", "10101", "10101", "01010" };
+    static const char* x[7] = { "10001", "01010", "00100", "00100", "01010", "10001", "10001" };
+    static const char* slash[7] = { "00001", "00010", "00100", "01000", "10000", "00000", "00000" };
+    static const char* colon[7] = { "00000", "00100", "00100", "00000", "00100", "00100", "00000" };
+    static const char* gt[7] = { "10000", "01000", "00100", "00010", "00100", "01000", "10000" };
+
+    switch (c)
+    {
+    case 'A': return a;
+    case 'B': return b;
+    case 'C': return cGlyph;
+    case 'D': return d;
+    case 'E': return e;
+    case 'H': return h;
+    case 'I': return i;
+    case 'L': return l;
+    case 'M': return m;
+    case 'N': return n;
+    case 'O': return o;
+    case 'P': return p;
+    case 'R': return r;
+    case 'S': return s;
+    case 'T': return t;
+    case 'U': return u;
+    case 'V': return v;
+    case 'W': return w;
+    case 'X': return x;
+    case '/': return slash;
+    case ':': return colon;
+    case '>': return gt;
+    default: return space;
+    }
+}
+
+void AddOverlayRect(std::vector<OverlayVertex>& vertices, float x, float y, float w, float h, const glm::vec4& color)
+{
+    const float x0 = (x / width) * 2.0f - 1.0f;
+    const float y0 = 1.0f - (y / height) * 2.0f;
+    const float x1 = ((x + w) / width) * 2.0f - 1.0f;
+    const float y1 = 1.0f - ((y + h) / height) * 2.0f;
+
+    vertices.push_back({ x0, y0, color.r, color.g, color.b, color.a });
+    vertices.push_back({ x1, y0, color.r, color.g, color.b, color.a });
+    vertices.push_back({ x1, y1, color.r, color.g, color.b, color.a });
+    vertices.push_back({ x0, y0, color.r, color.g, color.b, color.a });
+    vertices.push_back({ x1, y1, color.r, color.g, color.b, color.a });
+    vertices.push_back({ x0, y1, color.r, color.g, color.b, color.a });
+}
+
+void AddOverlayText(std::vector<OverlayVertex>& vertices, const std::string& text, float x, float y, float scale, const glm::vec4& color)
+{
+    const float pixel = 3.0f * scale;
+    const float gap = 1.0f * scale;
+    const float charStep = 23.0f * scale;
+
+    for (char ch : text)
+    {
+        const char** glyph = GetMenuGlyph(ch);
+        for (int row = 0; row < 7; ++row)
+        {
+            for (int col = 0; col < 5; ++col)
+            {
+                if (glyph[row][col] == '1')
+                    AddOverlayRect(vertices, x + col * (pixel + gap), y + row * (pixel + gap), pixel, pixel, color);
+            }
+        }
+        x += charStep;
+    }
+}
+
+void DrawEnvironmentMenu(const EnvironmentMenuState& menu, EnvironmentMode mode, Shader& overlayShader, GLuint overlayVAO, GLuint overlayVBO)
+{
+    std::vector<OverlayVertex> vertices;
+
+    const glm::vec4 panelColor(0.015f, 0.018f, 0.026f, 0.88f);
+    const glm::vec4 panelEdge(0.95f, 0.76f, 0.28f, 0.95f);
+    const glm::vec4 rowColor(0.055f, 0.065f, 0.085f, 0.88f);
+    const glm::vec4 rowSelected(0.16f, 0.28f, 0.40f, 0.96f);
+    const glm::vec4 textMain(0.92f, 0.90f, 0.82f, 1.0f);
+    const glm::vec4 textMuted(0.52f, 0.60f, 0.70f, 1.0f);
+    const glm::vec4 accent(0.98f, 0.78f, 0.24f, 1.0f);
+
+    if (menu.open)
+    {
+        const float panelX = 580.0f;
+        const float panelY = 245.0f;
+        const float panelW = 760.0f;
+        const float panelH = 470.0f;
+
+        AddOverlayRect(vertices, panelX + 10.0f, panelY + 12.0f, panelW, panelH, glm::vec4(0.0f, 0.0f, 0.0f, 0.28f));
+        AddOverlayRect(vertices, panelX, panelY, panelW, panelH, panelColor);
+        AddOverlayRect(vertices, panelX, panelY, panelW, 5.0f, panelEdge);
+        AddOverlayRect(vertices, panelX, panelY + panelH - 5.0f, panelW, 5.0f, glm::vec4(0.08f, 0.10f, 0.14f, 0.90f));
+
+        AddOverlayText(vertices, "AMBIENTE", panelX + 76.0f, panelY + 58.0f, 1.7f, textMain);
+        AddOverlayText(vertices, "SELECCIONA SKYBOX", panelX + 76.0f, panelY + 112.0f, 0.92f, textMuted);
+
+        const char* labels[3] = { "DIA", "NOCHE", "AUTO" };
+        for (int i = 0; i < 3; ++i)
+        {
+            const float rowX = panelX + 76.0f;
+            const float rowY = panelY + 172.0f + i * 78.0f;
+            const bool selected = menu.selection == i;
+            const bool active = EnvironmentSelectionFromMode(mode) == i;
+
+            AddOverlayRect(vertices, rowX, rowY, 608.0f, 58.0f, selected ? rowSelected : rowColor);
+            AddOverlayRect(vertices, rowX, rowY, 5.0f, 58.0f, selected ? accent : glm::vec4(0.18f, 0.22f, 0.28f, 1.0f));
+
+            if (selected)
+                AddOverlayText(vertices, ">", rowX + 28.0f, rowY + 17.0f, 1.4f, accent);
+
+            AddOverlayText(vertices, labels[i], rowX + 86.0f, rowY + 17.0f, 1.35f, selected ? glm::vec4(1.0f, 0.96f, 0.82f, 1.0f) : glm::vec4(0.74f, 0.80f, 0.88f, 1.0f));
+
+            if (active)
+                AddOverlayText(vertices, "ACTIVO", rowX + 410.0f, rowY + 21.0f, 0.80f, selected ? accent : textMuted);
+        }
+
+        AddOverlayRect(vertices, panelX + 76.0f, panelY + 420.0f, 608.0f, 1.5f, glm::vec4(0.22f, 0.25f, 0.31f, 0.9f));
+        AddOverlayText(vertices, "W/S PAD MOVER", panelX + 92.0f, panelY + 438.0f, 0.58f, textMuted);
+        AddOverlayText(vertices, "X APLICAR", panelX + 330.0f, panelY + 438.0f, 0.64f, textMuted);
+        AddOverlayText(vertices, "OPTIONS/B CERRAR", panelX + 500.0f, panelY + 438.0f, 0.52f, textMuted);
+    }
+    else
+    {
+        AddOverlayRect(vertices, 32.0f, 28.0f, 460.0f, 46.0f, glm::vec4(0.015f, 0.018f, 0.026f, 0.70f));
+        AddOverlayRect(vertices, 32.0f, 28.0f, 4.0f, 46.0f, accent);
+        AddOverlayText(vertices, std::string("AMBIENTE: ") + EnvironmentModeName(mode), 52.0f, 43.0f, 0.86f, textMain);
+        AddOverlayText(vertices, "TAB", 412.0f, 43.0f, 0.72f, accent);
+    }
+
+    glDisable(GL_DEPTH_TEST);
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+    overlayShader.Activate();
+    glBindVertexArray(overlayVAO);
+    glBindBuffer(GL_ARRAY_BUFFER, overlayVBO);
+    glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(OverlayVertex), vertices.data(), GL_DYNAMIC_DRAW);
+    glDrawArrays(GL_TRIANGLES, 0, static_cast<GLsizei>(vertices.size()));
+    glBindVertexArray(0);
+
+    glDisable(GL_BLEND);
+    glEnable(GL_DEPTH_TEST);
+}
+std::vector<std::string> GetSkyboxFacePaths(EnvironmentMode mode)
+{
+    const char* folder = mode == EnvironmentMode::Night
+        ? "Texturas/Skybox_Nigth"
+        : "Texturas/Skybox_Day";
+
+    return {
+        std::string(folder) + "/px.png",
+        std::string(folder) + "/nx.png",
+        std::string(folder) + "/py.png",
+        std::string(folder) + "/ny.png",
+        std::string(folder) + "/pz.png",
+        std::string(folder) + "/nz.png"
+    };
+}
 void createSphere(GLuint& VAO, GLuint& VBO, GLuint& EBO, int sectors, float radius) {
     std::vector<float> vertices;
     std::vector<unsigned int> indices;
@@ -142,15 +490,30 @@ int main()
     Shader shaderProgram("Shaders/default.vert", "Shaders/default.frag");
     Shader lightShader("Shaders/light.vert", "Shaders/light.frag");
     Shader sphereShader("Shaders/sphere.vert", "Shaders/sphere.frag");
+    Shader overlayShader("Shaders/menu.vert", "Shaders/menu.frag");
+    Texture sunTexture("Texturas/sun.jpg", "diffuse", 0);
+    Texture moonTexture("Texturas/moon.jpg", "diffuse", 0);
+    sphereShader.Activate();
+    sunTexture.texUnit(sphereShader, "sphereTexture", 0);
 
     GLuint sunVAO, sunVBO, sunEBO;
     GLuint moonVAO, moonVBO, moonEBO;
+    GLuint overlayVAO, overlayVBO;
+    glGenVertexArrays(1, &overlayVAO);
+    glGenBuffers(1, &overlayVBO);
+    glBindVertexArray(overlayVAO);
+    glBindBuffer(GL_ARRAY_BUFFER, overlayVBO);
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(OverlayVertex), (void*)0);
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, sizeof(OverlayVertex), (void*)(2 * sizeof(float)));
+    glEnableVertexAttribArray(1);
+    glBindVertexArray(0);
     createSphere(sunVAO, sunVBO, sunEBO, 48, SUN_SIZE);
     createSphere(moonVAO, moonVBO, moonEBO, 36, MOON_SIZE);
 
     Model model("modelos/city.glb");
     Skybox skybox(
-        {},
+        GetSkyboxFacePaths(EnvironmentMode::Day),
         "Shaders/skybox_cubemap.vert",
         "Shaders/skybox_cubemap.frag"
     );
@@ -196,16 +559,30 @@ int main()
     glm::vec3 moonPos;
     bool isDay = true;
 
+    EnvironmentMode environmentMode = EnvironmentMode::Auto;
+    EnvironmentMode activeSkyboxMode = EnvironmentMode::Day;
+    EnvironmentMenuState environmentMenu;
     while (!glfwWindowShouldClose(window))
     {
         float currentFrame = static_cast<float>(glfwGetTime());
         float deltaTime = currentFrame - lastFrame;
         lastFrame = currentFrame;
 
+        if (HandleEnvironmentMenu(window, environmentMenu, environmentMode))
+        {
+            const EnvironmentMode requestedSkyboxMode = environmentMode == EnvironmentMode::Night ? EnvironmentMode::Night : EnvironmentMode::Day;
+            if (requestedSkyboxMode != activeSkyboxMode)
+            {
+                skybox.SetFaces(GetSkyboxFacePaths(requestedSkyboxMode));
+                activeSkyboxMode = requestedSkyboxMode;
+            }
+        }
+
         timeOfDayAngle = currentFrame * dayNightSpeed;
         float sunAngleRad = timeOfDayAngle;
 
         sunHeight = std::sin(sunAngleRad);
+        ApplyEnvironmentMode(environmentMode, sunAngleRad, sunHeight);
         isDay = sunHeight > 0.0f;
 
         dayFactor = glm::clamp(sunHeight + 0.2f, 0.05f, 1.0f);
@@ -359,7 +736,8 @@ int main()
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         const glm::vec3 prevPos = camera.Position;
-        camera.Inputs(window, deltaTime);
+        if (!environmentMenu.open)
+            camera.Inputs(window, deltaTime);
 
         if (!camera.flyMode)
         {
@@ -408,6 +786,8 @@ int main()
 
         if (sunPos.y > -200.0f && isDay) {
             sphereShader.Activate();
+            sunTexture.Bind();
+            glUniform1f(glGetUniformLocation(sphereShader.ID, "useTexture"), 1.0f);
             glm::mat4 sunModel = glm::translate(glm::mat4(1.0f), sunPos);
             glUniformMatrix4fv(glGetUniformLocation(sphereShader.ID, "model"), 1, GL_FALSE, glm::value_ptr(sunModel));
             glUniformMatrix4fv(glGetUniformLocation(sphereShader.ID, "view"), 1, GL_FALSE, glm::value_ptr(view));
@@ -420,11 +800,16 @@ int main()
 
             glBindVertexArray(sunVAO);
             glDrawElements(GL_TRIANGLES, 48 * 48 * 6, GL_UNSIGNED_INT, 0);
+            sunTexture.Unbind();
         }
 
         if (moonPos.y > -200.0f && !isDay) {
             sphereShader.Activate();
-            glm::mat4 moonModel = glm::translate(glm::mat4(1.0f), moonPos);
+            moonTexture.Bind();
+            glUniform1f(glGetUniformLocation(sphereShader.ID, "useTexture"), 1.0f);
+            glm::mat4 moonModel =
+                glm::translate(glm::mat4(1.0f), moonPos) *
+                glm::inverse(glm::mat4(glm::mat3(view)));
             glUniformMatrix4fv(glGetUniformLocation(sphereShader.ID, "model"), 1, GL_FALSE, glm::value_ptr(moonModel));
             glUniformMatrix4fv(glGetUniformLocation(sphereShader.ID, "view"), 1, GL_FALSE, glm::value_ptr(view));
             glUniformMatrix4fv(glGetUniformLocation(sphereShader.ID, "projection"), 1, GL_FALSE, glm::value_ptr(projection));
@@ -436,19 +821,20 @@ int main()
 
             glBindVertexArray(moonVAO);
             glDrawElements(GL_TRIANGLES, 36 * 36 * 6, GL_UNSIGNED_INT, 0);
+            moonTexture.Unbind();
         }
 
         if (!useFastRenderMode)
             skybox.Draw(camera, cameraFov, cameraNearPlane, cameraFarPlane);
 
+        DrawEnvironmentMenu(environmentMenu, environmentMode, overlayShader, overlayVAO, overlayVBO);
+
         if (showCoordinatesInWindowTitle && currentFrame - lastTitleUpdate >= 0.1f)
         {
             const glm::vec3 normPos = glm::clamp(camera.Position / targetSceneRadius, glm::vec3(-1.0f), glm::vec3(1.0f));
 
-            std::ostringstream title;
-            title << std::fixed << std::setprecision(3);
-            title << "X:" << normPos.x << " Y:" << normPos.y << " Z:" << normPos.z;
-            glfwSetWindowTitle(window, title.str().c_str());
+            const std::string title = BuildEnvironmentTitle(environmentMenu, environmentMode, normPos);
+            glfwSetWindowTitle(window, title.c_str());
             lastTitleUpdate = currentFrame;
         }
 
@@ -462,6 +848,10 @@ int main()
     glDeleteVertexArrays(1, &moonVAO);
     glDeleteBuffers(1, &moonVBO);
     glDeleteBuffers(1, &moonEBO);
+    sunTexture.Delete();
+    moonTexture.Delete();
+    glDeleteVertexArrays(1, &overlayVAO);
+    glDeleteBuffers(1, &overlayVBO);
 
     glfwDestroyWindow(window);
     glfwTerminate();
