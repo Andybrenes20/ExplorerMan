@@ -84,10 +84,7 @@ void main()
 	}
 
 	float stars = smoothstep(0.985, 1.0, fbm(dir.xz * 180.0 + dir.y * 23.0));
-	float moonGlow = pow(max(dot(dir, normalize(-skySunDir)), 0.0), 24.0);
-	moonGlow *= smoothstep(-0.10, -0.45, sunHeight);
 	vec3 nightBase = mix(vec3(0.01, 0.02, 0.05), vec3(0.05, 0.07, 0.12), clamp(dir.y * 0.5 + 0.5, 0.0, 1.0));
-	nightBase += vec3(0.85, 0.90, 1.0) * moonGlow * 0.18;
 	nightBase += vec3(1.0) * stars * smoothstep(-0.12, -0.55, sunHeight);
 	proceduralNightColor = vec4(nightBase, 1.0);
 
