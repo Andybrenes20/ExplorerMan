@@ -29,8 +29,9 @@ const float targetSceneRadius = 1800.0f;
 const float cameraFov = 55.0f;
 const float cameraNearPlane = 0.05f;
 const float cameraFarPlane = 6000.0f;
-const float celestialOrbitRadius = 2800.0f;
-const float maxSunHeight = 2000.0f;
+const float celestialOrbitRadius = 3200.0f;
+const float maxSunHeight = 3000.0f;
+const float maxMoonHeightFactor = 0.82f;
 
 // --- Caminar -------------------------------------------
 const float walkEyeHeight = 6.0f;
@@ -682,7 +683,7 @@ int main()
         if (moonVertical > 0.0f) {
             moonPos = glm::vec3(
                 moonHorizontal * celestialOrbitRadius * 0.8f,
-                moonVertical * maxSunHeight * 0.6f,
+                moonVertical * maxSunHeight * maxMoonHeightFactor,
                 std::sin(moonAngleRad) * celestialOrbitRadius * 0.4f
             );
         }
