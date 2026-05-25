@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup Label="ProjectConfigurations">
     <ProjectConfiguration Include="Debug|Win32">
@@ -87,7 +87,8 @@
     </Link>
     <PostBuildEvent>
       <Command>xcopy /E /I /Y "$(ProjectDir)Shaders" "$(OutDir)Shaders"
-xcopy /E /I /Y "$(ProjectDir)modelos" "$(OutDir)modelos"</Command>
+xcopy /E /I /Y "$(ProjectDir)modelos" "$(OutDir)modelos"
+xcopy /E /I /Y "$(ProjectDir)Texturas" "$(OutDir)Texturas"</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
@@ -109,7 +110,8 @@ xcopy /E /I /Y "$(ProjectDir)modelos" "$(OutDir)modelos"</Command>
     </Link>
     <PostBuildEvent>
       <Command>xcopy /E /I /Y "$(ProjectDir)Shaders" "$(OutDir)Shaders"
-xcopy /E /I /Y "$(ProjectDir)modelos" "$(OutDir)modelos"</Command>
+xcopy /E /I /Y "$(ProjectDir)modelos" "$(OutDir)modelos"
+xcopy /E /I /Y "$(ProjectDir)Texturas" "$(OutDir)Texturas"</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
@@ -129,7 +131,8 @@ xcopy /E /I /Y "$(ProjectDir)modelos" "$(OutDir)modelos"</Command>
     </Link>
     <PostBuildEvent>
       <Command>xcopy /E /I /Y "$(ProjectDir)Shaders" "$(OutDir)Shaders"
-xcopy /E /I /Y "$(ProjectDir)modelos" "$(OutDir)modelos"</Command>
+xcopy /E /I /Y "$(ProjectDir)modelos" "$(OutDir)modelos"
+xcopy /E /I /Y "$(ProjectDir)Texturas" "$(OutDir)Texturas"</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -151,7 +154,8 @@ xcopy /E /I /Y "$(ProjectDir)modelos" "$(OutDir)modelos"</Command>
     </Link>
     <PostBuildEvent>
       <Command>xcopy /E /I /Y "$(ProjectDir)Shaders" "$(OutDir)Shaders"
-xcopy /E /I /Y "$(ProjectDir)modelos" "$(OutDir)modelos"</Command>
+xcopy /E /I /Y "$(ProjectDir)modelos" "$(OutDir)modelos"
+xcopy /E /I /Y "$(ProjectDir)Texturas" "$(OutDir)Texturas"</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
@@ -198,6 +202,8 @@ xcopy /E /I /Y "$(ProjectDir)modelos" "$(OutDir)modelos"</Command>
     <None Include="Shaders\default.vert" />
     <None Include="Shaders\light.frag" />
     <None Include="Shaders\light.vert" />
+    <None Include="Shaders\menu.frag" />
+    <None Include="Shaders\menu.vert" />
     <None Include="Shaders\skybox.frag" />
     <None Include="Shaders\skybox.vert" />
     <None Include="Shaders\skybox_cubemap.frag" />
@@ -206,6 +212,20 @@ xcopy /E /I /Y "$(ProjectDir)modelos" "$(OutDir)modelos"</Command>
     <None Include="Shaders\sphere.vert" />
   </ItemGroup>
   <ItemGroup>
+    <Image Include="Texturas\SkyboxCubemap\nubes.png" />
+    <Image Include="Texturas\Skybox_Day\nx.png" />
+    <Image Include="Texturas\Skybox_Day\ny.png" />
+    <Image Include="Texturas\Skybox_Day\nz.png" />
+    <Image Include="Texturas\Skybox_Day\px.png" />
+    <Image Include="Texturas\Skybox_Day\py.png" />
+    <Image Include="Texturas\Skybox_Day\pz.png" />
+    <Image Include="Texturas\Skybox_Nigth\nx.png" />
+    <Image Include="Texturas\Skybox_Nigth\ny.png" />
+    <Image Include="Texturas\Skybox_Nigth\nz.png" />
+    <Image Include="Texturas\Skybox_Nigth\px.png" />
+    <Image Include="Texturas\Skybox_Nigth\py.png" />
+    <Image Include="Texturas\Skybox_Nigth\pz.png" />
+    <Image Include="Textures\skybox.jpg" />
     <Image Include="Texutras\skybox.jpg" />
     <Image Include="Texutras\SkyboxCubemap\back.jpg" />
     <Image Include="Texutras\SkyboxCubemap\bottom.jpg" />
@@ -213,6 +233,12 @@ xcopy /E /I /Y "$(ProjectDir)modelos" "$(OutDir)modelos"</Command>
     <Image Include="Texutras\SkyboxCubemap\left.jpg" />
     <Image Include="Texutras\SkyboxCubemap\right.jpg" />
     <Image Include="Texutras\SkyboxCubemap\top.jpg" />
+    <Image Include="Texturas\SkyboxCubemap\px.png" />
+    <Image Include="Texturas\SkyboxCubemap\nx.png" />
+    <Image Include="Texturas\SkyboxCubemap\py.png" />
+    <Image Include="Texturas\SkyboxCubemap\ny.png" />
+    <Image Include="Texturas\SkyboxCubemap\pz.png" />
+    <Image Include="Texturas\SkyboxCubemap\nz.png" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

@@ -17,6 +17,7 @@ public:
 	~Skybox();
 
 	void Draw(const Camera& camera, float FOVdeg, float nearPlane, float farPlane);
+	void SetFaces(const std::vector<std::string>& facePaths);
 
 private:
 	GLuint VAO = 0;

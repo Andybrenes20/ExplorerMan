@@ -36,7 +36,7 @@ const float walkProbeRadius = 8.0f;
 const float walkMaxStepUp = 12.0f;
 const float walkMaxDropDown = 45.0f;
 const float walkMaxSlopeDegrees = 68.0f;
-const float walkSpeed = 85.0f;
+const float walkSpeed = 30.0f;
 
 // --- Opciones ------------------------------------------
 const bool showCoordinatesInWindowTitle = true;
@@ -66,6 +66,11 @@ struct EnvironmentMenuState
     bool downWasDown = false;
     bool enterWasDown = false;
     bool escapeWasDown = false;
+    bool gamepadOptionsWasDown = false;
+    bool gamepadUpWasDown = false;
+    bool gamepadDownWasDown = false;
+    bool gamepadAcceptWasDown = false;
+    bool gamepadCancelWasDown = false;
 };
 
 const char* EnvironmentModeName(EnvironmentMode mode)
@@ -98,15 +103,37 @@ int EnvironmentSelectionFromMode(EnvironmentMode mode)
     }
 }
 
-void HandleEnvironmentMenu(GLFWwindow* window, EnvironmentMenuState& menu, EnvironmentMode& mode)
+bool HandleEnvironmentMenu(GLFWwindow* window, EnvironmentMenuState& menu, EnvironmentMode& mode)
 {
     const bool tabDown = glfwGetKey(window, GLFW_KEY_TAB) == GLFW_PRESS;
     const bool upDown = glfwGetKey(window, GLFW_KEY_UP) == GLFW_PRESS || glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS;
     const bool downDown = glfwGetKey(window, GLFW_KEY_DOWN) == GLFW_PRESS || glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS;
     const bool enterDown = glfwGetKey(window, GLFW_KEY_ENTER) == GLFW_PRESS || glfwGetKey(window, GLFW_KEY_KP_ENTER) == GLFW_PRESS;
     const bool escapeDown = glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS;
+    bool gamepadOptionsDown = false;
+    bool gamepadUpDown = false;
+    bool gamepadDownDown = false;
+    bool gamepadAcceptDown = false;
+    bool gamepadCancelDown = false;
+    bool modeChanged = false;
 
-    if (tabDown && !menu.tabWasDown)
+    if (glfwJoystickIsGamepad(GLFW_JOYSTICK_1))
+    {
+        GLFWgamepadstate state;
+        if (glfwGetGamepadState(GLFW_JOYSTICK_1, &state))
+        {
+            const float stickDeadzone = 0.55f;
+            gamepadOptionsDown = state.buttons[GLFW_GAMEPAD_BUTTON_START] == GLFW_PRESS;
+            gamepadUpDown = state.buttons[GLFW_GAMEPAD_BUTTON_DPAD_UP] == GLFW_PRESS ||
+                state.axes[GLFW_GAMEPAD_AXIS_LEFT_Y] < -stickDeadzone;
+            gamepadDownDown = state.buttons[GLFW_GAMEPAD_BUTTON_DPAD_DOWN] == GLFW_PRESS ||
+                state.axes[GLFW_GAMEPAD_AXIS_LEFT_Y] > stickDeadzone;
+            gamepadAcceptDown = state.buttons[GLFW_GAMEPAD_BUTTON_A] == GLFW_PRESS;
+            gamepadCancelDown = state.buttons[GLFW_GAMEPAD_BUTTON_B] == GLFW_PRESS;
+        }
+    }
+
+    if ((tabDown && !menu.tabWasDown) || (gamepadOptionsDown && !menu.gamepadOptionsWasDown))
     {
         menu.open = !menu.open;
         menu.selection = EnvironmentSelectionFromMode(mode);
@@ -114,19 +141,20 @@ void HandleEnvironmentMenu(GLFWwindow* window, EnvironmentMenuState& menu, Envir
 
     if (menu.open)
     {
-        if (upDown && !menu.upWasDown)
+        if ((upDown && !menu.upWasDown) || (gamepadUpDown && !menu.gamepadUpWasDown))
             menu.selection = (menu.selection + 2) % 3;
 
-        if (downDown && !menu.downWasDown)
+        if ((downDown && !menu.downWasDown) || (gamepadDownDown && !menu.gamepadDownWasDown))
             menu.selection = (menu.selection + 1) % 3;
 
-        if (enterDown && !menu.enterWasDown)
+        if ((enterDown && !menu.enterWasDown) || (gamepadAcceptDown && !menu.gamepadAcceptWasDown))
         {
             mode = EnvironmentModeFromSelection(menu.selection);
             menu.open = false;
+            modeChanged = true;
         }
 
-        if (escapeDown && !menu.escapeWasDown)
+        if ((escapeDown && !menu.escapeWasDown) || (gamepadCancelDown && !menu.gamepadCancelWasDown))
             menu.open = false;
     }
 
@@ -135,6 +163,13 @@ void HandleEnvironmentMenu(GLFWwindow* window, EnvironmentMenuState& menu, Envir
     menu.downWasDown = downDown;
     menu.enterWasDown = enterDown;
     menu.escapeWasDown = escapeDown;
+    menu.gamepadOptionsWasDown = gamepadOptionsDown;
+    menu.gamepadUpWasDown = gamepadUpDown;
+    menu.gamepadDownWasDown = gamepadDownDown;
+    menu.gamepadAcceptWasDown = gamepadAcceptDown;
+    menu.gamepadCancelWasDown = gamepadCancelDown;
+
+    return modeChanged;
 }
 
 void ApplyEnvironmentMode(EnvironmentMode mode, float& sunAngleRad, float& sunHeight)
@@ -204,6 +239,7 @@ const char** GetMenuGlyph(char c)
     static const char* u[7] = { "10001", "10001", "10001", "10001", "10001", "10001", "01110" };
     static const char* v[7] = { "10001", "10001", "10001", "10001", "10001", "01010", "00100" };
     static const char* w[7] = { "10001", "10001", "10001", "10101", "10101", "10101", "01010" };
+    static const char* x[7] = { "10001", "01010", "00100", "00100", "01010", "10001", "10001" };
     static const char* slash[7] = { "00001", "00010", "00100", "01000", "10000", "00000", "00000" };
     static const char* colon[7] = { "00000", "00100", "00100", "00000", "00100", "00100", "00000" };
     static const char* gt[7] = { "10000", "01000", "00100", "00010", "00100", "01000", "10000" };
@@ -228,6 +264,7 @@ const char** GetMenuGlyph(char c)
     case 'U': return u;
     case 'V': return v;
     case 'W': return w;
+    case 'X': return x;
     case '/': return slash;
     case ':': return colon;
     case '>': return gt;
@@ -254,7 +291,7 @@ void AddOverlayText(std::vector<OverlayVertex>& vertices, const std::string& tex
 {
     const float pixel = 3.0f * scale;
     const float gap = 1.0f * scale;
-    const float charStep = 19.0f * scale;
+    const float charStep = 23.0f * scale;
 
     for (char ch : text)
     {
@@ -275,33 +312,60 @@ void DrawEnvironmentMenu(const EnvironmentMenuState& menu, EnvironmentMode mode,
 {
     std::vector<OverlayVertex> vertices;
 
+    const glm::vec4 panelColor(0.015f, 0.018f, 0.026f, 0.88f);
+    const glm::vec4 panelEdge(0.95f, 0.76f, 0.28f, 0.95f);
+    const glm::vec4 rowColor(0.055f, 0.065f, 0.085f, 0.88f);
+    const glm::vec4 rowSelected(0.16f, 0.28f, 0.40f, 0.96f);
+    const glm::vec4 textMain(0.92f, 0.90f, 0.82f, 1.0f);
+    const glm::vec4 textMuted(0.52f, 0.60f, 0.70f, 1.0f);
+    const glm::vec4 accent(0.98f, 0.78f, 0.24f, 1.0f);
+
     if (menu.open)
     {
-        AddOverlayRect(vertices, 560.0f, 260.0f, 800.0f, 420.0f, glm::vec4(0.02f, 0.025f, 0.035f, 0.92f));
-        AddOverlayRect(vertices, 560.0f, 260.0f, 800.0f, 4.0f, glm::vec4(0.95f, 0.78f, 0.32f, 1.0f));
-        AddOverlayText(vertices, "MENU AMBIENTE", 650.0f, 315.0f, 2.8f, glm::vec4(0.95f, 0.93f, 0.86f, 1.0f));
+        const float panelX = 580.0f;
+        const float panelY = 245.0f;
+        const float panelW = 760.0f;
+        const float panelH = 470.0f;
+
+        AddOverlayRect(vertices, panelX + 10.0f, panelY + 12.0f, panelW, panelH, glm::vec4(0.0f, 0.0f, 0.0f, 0.28f));
+        AddOverlayRect(vertices, panelX, panelY, panelW, panelH, panelColor);
+        AddOverlayRect(vertices, panelX, panelY, panelW, 5.0f, panelEdge);
+        AddOverlayRect(vertices, panelX, panelY + panelH - 5.0f, panelW, 5.0f, glm::vec4(0.08f, 0.10f, 0.14f, 0.90f));
+
+        AddOverlayText(vertices, "AMBIENTE", panelX + 76.0f, panelY + 58.0f, 1.7f, textMain);
+        AddOverlayText(vertices, "SELECCIONA SKYBOX", panelX + 76.0f, panelY + 112.0f, 0.92f, textMuted);
 
         const char* labels[3] = { "DIA", "NOCHE", "AUTO" };
         for (int i = 0; i < 3; ++i)
         {
-            const float rowY = 405.0f + i * 74.0f;
+            const float rowX = panelX + 76.0f;
+            const float rowY = panelY + 172.0f + i * 78.0f;
             const bool selected = menu.selection == i;
-            AddOverlayRect(vertices, 660.0f, rowY - 14.0f, 600.0f, 58.0f,
-                selected ? glm::vec4(0.20f, 0.33f, 0.48f, 0.95f) : glm::vec4(0.09f, 0.10f, 0.13f, 0.92f));
+            const bool active = EnvironmentSelectionFromMode(mode) == i;
+
+            AddOverlayRect(vertices, rowX, rowY, 608.0f, 58.0f, selected ? rowSelected : rowColor);
+            AddOverlayRect(vertices, rowX, rowY, 5.0f, 58.0f, selected ? accent : glm::vec4(0.18f, 0.22f, 0.28f, 1.0f));
+
             if (selected)
-                AddOverlayText(vertices, ">", 700.0f, rowY, 2.0f, glm::vec4(0.95f, 0.78f, 0.32f, 1.0f));
-            AddOverlayText(vertices, labels[i], 760.0f, rowY, 2.0f,
-                selected ? glm::vec4(1.0f, 0.96f, 0.82f, 1.0f) : glm::vec4(0.70f, 0.76f, 0.82f, 1.0f));
+                AddOverlayText(vertices, ">", rowX + 28.0f, rowY + 17.0f, 1.4f, accent);
+
+            AddOverlayText(vertices, labels[i], rowX + 86.0f, rowY + 17.0f, 1.35f, selected ? glm::vec4(1.0f, 0.96f, 0.82f, 1.0f) : glm::vec4(0.74f, 0.80f, 0.88f, 1.0f));
+
+            if (active)
+                AddOverlayText(vertices, "ACTIVO", rowX + 410.0f, rowY + 21.0f, 0.80f, selected ? accent : textMuted);
         }
 
-        AddOverlayText(vertices, "W/S MOVER  ENTER APLICAR", 635.0f, 625.0f, 1.2f, glm::vec4(0.62f, 0.68f, 0.76f, 1.0f));
-        AddOverlayText(vertices, "TAB/ESC CERRAR", 820.0f, 655.0f, 1.2f, glm::vec4(0.62f, 0.68f, 0.76f, 1.0f));
+        AddOverlayRect(vertices, panelX + 76.0f, panelY + 420.0f, 608.0f, 1.5f, glm::vec4(0.22f, 0.25f, 0.31f, 0.9f));
+        AddOverlayText(vertices, "W/S PAD MOVER", panelX + 92.0f, panelY + 438.0f, 0.58f, textMuted);
+        AddOverlayText(vertices, "X APLICAR", panelX + 330.0f, panelY + 438.0f, 0.64f, textMuted);
+        AddOverlayText(vertices, "OPTIONS/B CERRAR", panelX + 500.0f, panelY + 438.0f, 0.52f, textMuted);
     }
     else
     {
-        AddOverlayRect(vertices, 32.0f, 28.0f, 390.0f, 58.0f, glm::vec4(0.02f, 0.025f, 0.035f, 0.72f));
-        AddOverlayText(vertices, std::string("AMBIENTE: ") + EnvironmentModeName(mode), 52.0f, 48.0f, 1.2f, glm::vec4(0.95f, 0.93f, 0.86f, 1.0f));
-        AddOverlayText(vertices, "TAB MENU", 288.0f, 49.0f, 1.0f, glm::vec4(0.95f, 0.78f, 0.32f, 1.0f));
+        AddOverlayRect(vertices, 32.0f, 28.0f, 460.0f, 46.0f, glm::vec4(0.015f, 0.018f, 0.026f, 0.70f));
+        AddOverlayRect(vertices, 32.0f, 28.0f, 4.0f, 46.0f, accent);
+        AddOverlayText(vertices, std::string("AMBIENTE: ") + EnvironmentModeName(mode), 52.0f, 43.0f, 0.86f, textMain);
+        AddOverlayText(vertices, "TAB", 412.0f, 43.0f, 0.72f, accent);
     }
 
     glDisable(GL_DEPTH_TEST);
@@ -317,6 +381,21 @@ void DrawEnvironmentMenu(const EnvironmentMenuState& menu, EnvironmentMode mode,
 
     glDisable(GL_BLEND);
     glEnable(GL_DEPTH_TEST);
+}
+std::vector<std::string> GetSkyboxFacePaths(EnvironmentMode mode)
+{
+    const char* folder = mode == EnvironmentMode::Night
+        ? "Texturas/Skybox_Nigth"
+        : "Texturas/Skybox_Day";
+
+    return {
+        std::string(folder) + "/px.png",
+        std::string(folder) + "/nx.png",
+        std::string(folder) + "/py.png",
+        std::string(folder) + "/ny.png",
+        std::string(folder) + "/pz.png",
+        std::string(folder) + "/nz.png"
+    };
 }
 void createSphere(GLuint& VAO, GLuint& VBO, GLuint& EBO, int sectors, float radius) {
     std::vector<float> vertices;
@@ -430,7 +509,7 @@ int main()
 
     Model model("modelos/city.glb");
     Skybox skybox(
-        {},
+        GetSkyboxFacePaths(EnvironmentMode::Day),
         "Shaders/skybox_cubemap.vert",
         "Shaders/skybox_cubemap.frag"
     );
@@ -477,6 +556,7 @@ int main()
     bool isDay = true;
 
     EnvironmentMode environmentMode = EnvironmentMode::Auto;
+    EnvironmentMode activeSkyboxMode = EnvironmentMode::Day;
     EnvironmentMenuState environmentMenu;
     while (!glfwWindowShouldClose(window))
     {
@@ -484,7 +564,15 @@ int main()
         float deltaTime = currentFrame - lastFrame;
         lastFrame = currentFrame;
 
-        HandleEnvironmentMenu(window, environmentMenu, environmentMode);
+        if (HandleEnvironmentMenu(window, environmentMenu, environmentMode))
+        {
+            const EnvironmentMode requestedSkyboxMode = environmentMode == EnvironmentMode::Night ? EnvironmentMode::Night : EnvironmentMode::Day;
+            if (requestedSkyboxMode != activeSkyboxMode)
+            {
+                skybox.SetFaces(GetSkyboxFacePaths(requestedSkyboxMode));
+                activeSkyboxMode = requestedSkyboxMode;
+            }
+        }
 
         timeOfDayAngle = currentFrame * dayNightSpeed;
         float sunAngleRad = timeOfDayAngle;
