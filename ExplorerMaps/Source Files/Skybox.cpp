@@ -52,30 +52,17 @@ namespace
 		-1.0f, -1.0f,  1.0f,
 		 1.0f, -1.0f,  1.0f
 	};
-}
 
-Skybox::Skybox(const std::vector<std::string>& facePaths, const char* vertexShaderPath, const char* fragmentShaderPath)
-	: shader(vertexShaderPath, fragmentShaderPath)
-{
-	setupCube();
-	try
+	GLuint CreateProceduralCubemap(bool nightTheme)
 	{
-		cubemapTexture = LoadCubemapTexture(facePaths);
-	}
-	catch (...)
-	{
-		cubemapTexture = 0;
-	}
-
-	if (cubemapTexture == 0)
-	{
-		glGenTextures(1, &cubemapTexture);
-		glBindTexture(GL_TEXTURE_CUBE_MAP, cubemapTexture);
+		GLuint texture = 0;
+		glGenTextures(1, &texture);
+		glBindTexture(GL_TEXTURE_CUBE_MAP, texture);
 
 		constexpr int faceSize = 512;
 		for (int faceIndex = 0; faceIndex < 6; ++faceIndex)
 		{
-			const std::vector<unsigned char> pixels = BuildProceduralFace(faceSize, faceSize, faceIndex);
+			const std::vector<unsigned char> pixels = Skybox::BuildProceduralFace(faceSize, faceSize, faceIndex, nightTheme);
 			glTexImage2D(
 				GL_TEXTURE_CUBE_MAP_POSITIVE_X + faceIndex,
 				0,
@@ -95,14 +82,47 @@ Skybox::Skybox(const std::vector<std::string>& facePaths, const char* vertexShad
 		glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 		glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
 		glBindTexture(GL_TEXTURE_CUBE_MAP, 0);
+		return texture;
 	}
+
+	GLuint LoadCubemapOrFallback(const std::vector<std::string>& facePaths, bool nightTheme)
+	{
+		try
+		{
+			GLuint texture = LoadCubemapTexture(facePaths);
+			if (texture != 0)
+				return texture;
+		}
+		catch (...)
+		{
+		}
+
+		return CreateProceduralCubemap(nightTheme);
+	}
+}
+
+Skybox::Skybox(
+	const std::vector<std::string>& dayFacePaths,
+	const std::vector<std::string>& nightFacePaths,
+	const char* vertexShaderPath,
+	const char* fragmentShaderPath
+)
+	: shader(vertexShaderPath, fragmentShaderPath)
+{
+	setupCube();
+	dayCubemapTexture = LoadCubemapOrFallback(dayFacePaths, false);
+	nightCubemapTexture = LoadCubemapOrFallback(nightFacePaths, true);
 }
 
 Skybox::~Skybox()
 {
-	if (cubemapTexture != 0)
+	if (dayCubemapTexture != 0)
 	{
-		glDeleteTextures(1, &cubemapTexture);
+		glDeleteTextures(1, &dayCubemapTexture);
+	}
+	if (nightCubemapTexture != 0)
+	{
+		glDeleteTextures(1, &nightCubemapTexture);
 	}
 	if (VBO != 0)
 	{
@@ -116,25 +136,9 @@ Skybox::~Skybox()
 }
 
 
-void Skybox::SetFaces(const std::vector<std::string>& facePaths)
+void Skybox::SetBlendFactor(float factor)
 {
-	GLuint newTexture = 0;
-	try
-	{
-		newTexture = LoadCubemapTexture(facePaths);
-	}
-	catch (...)
-	{
-		return;
-	}
-
-	if (newTexture == 0)
-		return;
-
-	if (cubemapTexture != 0)
-		glDeleteTextures(1, &cubemapTexture);
-
-	cubemapTexture = newTexture;
+	blendFactor = glm::clamp(factor, 0.0f, 1.0f);
 }
 void Skybox::Draw(const Camera& camera, float FOVdeg, float nearPlane, float farPlane)
 {
@@ -147,11 +151,15 @@ void Skybox::Draw(const Camera& camera, float FOVdeg, float nearPlane, float far
 
 	glUniformMatrix4fv(glGetUniformLocation(shader.ID, "view"), 1, GL_FALSE, glm::value_ptr(view));
 	glUniformMatrix4fv(glGetUniformLocation(shader.ID, "projection"), 1, GL_FALSE, glm::value_ptr(projection));
-	glUniform1i(glGetUniformLocation(shader.ID, "skybox"), 0);
+	glUniform1i(glGetUniformLocation(shader.ID, "daySkybox"), 0);
+	glUniform1i(glGetUniformLocation(shader.ID, "nightSkybox"), 1);
+	glUniform1f(glGetUniformLocation(shader.ID, "blendFactor"), blendFactor);
 
 	glBindVertexArray(VAO);
 	glActiveTexture(GL_TEXTURE0);
-	glBindTexture(GL_TEXTURE_CUBE_MAP, cubemapTexture);
+	glBindTexture(GL_TEXTURE_CUBE_MAP, dayCubemapTexture);
+	glActiveTexture(GL_TEXTURE1);
+	glBindTexture(GL_TEXTURE_CUBE_MAP, nightCubemapTexture);
 	glDrawArrays(GL_TRIANGLES, 0, 36);
 	glBindVertexArray(0);
 
@@ -174,13 +182,13 @@ void Skybox::setupCube()
 	glBindBuffer(GL_ARRAY_BUFFER, 0);
 }
 
-std::vector<unsigned char> Skybox::BuildProceduralFace(int width, int height, int faceIndex)
+std::vector<unsigned char> Skybox::BuildProceduralFace(int width, int height, int faceIndex, bool nightTheme)
 {
 	std::vector<unsigned char> pixels(static_cast<std::size_t>(width) * static_cast<std::size_t>(height) * 3);
 
-	const glm::vec3 zenithColor(0.25f, 0.52f, 0.92f);
-	const glm::vec3 horizonColor(0.83f, 0.92f, 1.0f);
-	const glm::vec3 groundColor(0.58f, 0.67f, 0.83f);
+	const glm::vec3 zenithColor = nightTheme ? glm::vec3(0.03f, 0.05f, 0.12f) : glm::vec3(0.25f, 0.52f, 0.92f);
+	const glm::vec3 horizonColor = nightTheme ? glm::vec3(0.12f, 0.16f, 0.26f) : glm::vec3(0.83f, 0.92f, 1.0f);
+	const glm::vec3 groundColor = nightTheme ? glm::vec3(0.04f, 0.05f, 0.08f) : glm::vec3(0.58f, 0.67f, 0.83f);
 	const glm::vec3 sunDirection = glm::normalize(glm::vec3(0.35f, 0.42f, -0.65f));
 
 	for (int y = 0; y < height; ++y)
@@ -196,12 +204,12 @@ std::vector<unsigned char> Skybox::BuildProceduralFace(int width, int height, in
 				? glm::mix(horizonColor, zenithColor, std::pow(skyBlend, 0.7f))
 				: glm::mix(horizonColor, groundColor, std::pow(-direction.y, 0.55f));
 
-			const float sunAmount = std::pow(glm::clamp(glm::dot(direction, sunDirection), 0.0f, 1.0f), 96.0f);
-			color += glm::vec3(1.0f, 0.88f, 0.62f) * sunAmount * 1.35f;
+			const float sunAmount = std::pow(glm::clamp(glm::dot(direction, sunDirection), 0.0f, 1.0f), nightTheme ? 180.0f : 96.0f);
+			color += (nightTheme ? glm::vec3(0.72f, 0.78f, 0.98f) : glm::vec3(1.0f, 0.88f, 0.62f)) * sunAmount * (nightTheme ? 0.35f : 1.35f);
 
 			if (std::abs(direction.y) < 0.012f)
 			{
-				color = glm::mix(color, glm::vec3(0.78f, 0.87f, 0.98f), 0.45f);
+				color = glm::mix(color, nightTheme ? glm::vec3(0.20f, 0.24f, 0.34f) : glm::vec3(0.78f, 0.87f, 0.98f), 0.45f);
 			}
 
 			color = glm::clamp(color, glm::vec3(0.0f), glm::vec3(1.0f));

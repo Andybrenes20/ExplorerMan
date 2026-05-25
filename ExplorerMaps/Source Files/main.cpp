@@ -102,6 +102,11 @@ int GetEnvironmentMenuRowAt(double mouseX, double mouseY)
     return -1;
 }
 
+float ComputeSkyBlendFactor(float sunHeight)
+{
+    return glm::smoothstep(0.28f, -0.18f, sunHeight);
+}
+
 const char* EnvironmentModeName(EnvironmentMode mode)
 {
     switch (mode)
@@ -566,6 +571,7 @@ int main()
     Model model("modelos/city.glb");
     Skybox skybox(
         GetSkyboxFacePaths(EnvironmentMode::Day),
+        GetSkyboxFacePaths(EnvironmentMode::Night),
         "Shaders/skybox_cubemap.vert",
         "Shaders/skybox_cubemap.frag"
     );
@@ -612,7 +618,6 @@ int main()
     bool isDay = true;
 
     EnvironmentMode environmentMode = EnvironmentMode::Auto;
-    EnvironmentMode activeSkyboxMode = EnvironmentMode::Day;
     EnvironmentMenuState environmentMenu;
     bool menuCursorVisible = false;
     while (!glfwWindowShouldClose(window))
@@ -648,12 +653,10 @@ int main()
         ApplyEnvironmentMode(environmentMode, sunAngleRad, sunHeight);
         isDay = sunHeight > 0.0f;
 
-        const EnvironmentMode requestedSkyboxMode = ResolveSkyboxMode(environmentMode, isDay);
-        if (requestedSkyboxMode != activeSkyboxMode)
-        {
-            skybox.SetFaces(GetSkyboxFacePaths(requestedSkyboxMode));
-            activeSkyboxMode = requestedSkyboxMode;
-        }
+        const float skyBlendFactor = environmentMode == EnvironmentMode::Day
+            ? 0.0f
+            : (environmentMode == EnvironmentMode::Night ? 1.0f : ComputeSkyBlendFactor(sunHeight));
+        skybox.SetBlendFactor(skyBlendFactor);
 
         dayFactor = glm::clamp(sunHeight + 0.2f, 0.05f, 1.0f);
         nightFactor = glm::clamp(-sunHeight + 0.1f, 0.0f, 1.0f);
@@ -695,111 +698,67 @@ int main()
             );
         }
 
-        glm::vec3 mainLightPos;
-        glm::vec3 mainLightColor;
-        float mainLightIntensity;
-        glm::vec3 ambientColor;
-        float diffuseIntensity;
-        float specularIntensity;
+        const float dayLightBlend = glm::smoothstep(-0.14f, 0.18f, sunHeight);
+        const float sunWarmBlend = glm::smoothstep(-0.04f, 0.32f, sunHeight);
+        const float sunNoonBlend = glm::smoothstep(0.18f, 0.82f, sunHeight);
+        const float sunPresence = glm::smoothstep(-0.08f, 0.75f, sunHeight);
+        const float moonPresence = glm::smoothstep(0.08f, -0.88f, sunHeight);
+        const float moonHeight = glm::clamp(std::abs(moonVertical), 0.0f, 1.0f);
 
-        if (isDay) {
-            mainLightPos = sunPos;
-            float lightPower = glm::clamp(sunHeight * 1.2f, 0.1f, 1.0f);
+        const glm::vec3 sunWarmColor = glm::mix(
+            glm::vec3(0.92f, 0.46f, 0.28f),
+            glm::vec3(1.0f, 0.76f, 0.56f),
+            sunWarmBlend
+        );
+        const glm::vec3 sunLightColor = glm::mix(
+            sunWarmColor,
+            glm::vec3(1.0f, 0.98f, 0.92f),
+            sunNoonBlend
+        );
+        const float sunLightIntensity = glm::mix(0.16f, 1.18f, sunPresence);
+        const glm::vec3 sunAmbientColor = glm::mix(
+            glm::vec3(0.08f, 0.07f, 0.10f),
+            glm::vec3(0.35f, 0.38f, 0.42f),
+            glm::smoothstep(-0.02f, 0.72f, sunHeight)
+        );
+        const float sunDiffuseIntensity = glm::mix(0.22f, 1.0f, sunPresence);
+        const float sunSpecularIntensity = glm::mix(0.12f, 0.60f, sunPresence);
 
-            if (sunHeight > 0.7f) {
-                mainLightColor = glm::vec3(1.0f, 0.98f, 0.92f);
-                mainLightIntensity = 1.2f * lightPower;
-                ambientColor = glm::vec3(0.35f, 0.38f, 0.42f);
-                diffuseIntensity = 1.0f;
-                specularIntensity = 0.6f;
-            }
-            else if (sunHeight > 0.4f) {
-                float t = (sunHeight - 0.4f) / 0.3f;
-                mainLightColor = glm::mix(
-                    glm::vec3(1.0f, 0.75f, 0.55f),
-                    glm::vec3(1.0f, 0.98f, 0.92f),
-                    t
-                );
-                mainLightIntensity = 0.9f * lightPower;
-                ambientColor = glm::vec3(0.28f, 0.30f, 0.32f);
-                diffuseIntensity = 0.8f;
-                specularIntensity = 0.5f;
-            }
-            else if (sunHeight > 0.1f) {
-                float t = (sunHeight - 0.1f) / 0.3f;
-                mainLightColor = glm::mix(
-                    glm::vec3(1.0f, 0.45f, 0.25f),
-                    glm::vec3(1.0f, 0.75f, 0.55f),
-                    t
-                );
-                mainLightIntensity = 0.5f * lightPower;
-                ambientColor = glm::vec3(0.18f, 0.16f, 0.20f);
-                diffuseIntensity = 0.5f;
-                specularIntensity = 0.3f;
-            }
-            else {
-                mainLightColor = glm::vec3(0.9f, 0.45f, 0.30f);
-                mainLightIntensity = 0.25f * lightPower;
-                ambientColor = glm::vec3(0.08f, 0.07f, 0.10f);
-                diffuseIntensity = 0.25f;
-                specularIntensity = 0.15f;
-            }
-        }
-        else {
-            // NOCHE - Luna ilumina un poco la ciudad (20-35% de intensidad)
-            mainLightPos = moonPos;
-            float moonHeight = std::abs(moonVertical);
-            // Intensidad de la luna: entre 20% y 35% para que se vea la ciudad
-            float moonLightPower = glm::clamp(moonHeight * 0.4f, 0.20f, 0.35f);
+        const glm::vec3 moonLightColor = glm::mix(
+            glm::vec3(0.50f, 0.56f, 0.74f),
+            glm::vec3(0.65f, 0.70f, 0.90f),
+            moonHeight
+        );
+        const float moonLightIntensity = glm::mix(0.14f, 0.34f, moonPresence * moonHeight);
+        const glm::vec3 moonAmbientColor = glm::mix(
+            glm::vec3(0.05f, 0.06f, 0.08f),
+            glm::vec3(0.08f, 0.10f, 0.15f),
+            glm::smoothstep(-0.90f, -0.10f, sunHeight)
+        );
+        const float moonDiffuseIntensity = glm::mix(0.22f, 0.35f, moonPresence);
+        const float moonSpecularIntensity = glm::mix(0.10f, 0.15f, moonPresence);
 
-            mainLightColor = glm::vec3(0.65f, 0.70f, 0.90f);
-            mainLightIntensity = moonLightPower;
-
-            // Ambiente suficiente para ver la ciudad
-            ambientColor = glm::vec3(0.08f, 0.10f, 0.15f);
-            diffuseIntensity = 0.35f;
-            specularIntensity = 0.15f;
-
-            // Noche mas oscura pero siempre visible
-            if (sunHeight < -0.6f) {
-                ambientColor = glm::vec3(0.05f, 0.06f, 0.08f);
-                mainLightIntensity = 0.20f;
-                diffuseIntensity = 0.25f;
-            }
-        }
+        glm::vec3 mainLightPos = glm::mix(moonPos, sunPos, dayLightBlend);
+        glm::vec3 mainLightColor = glm::mix(moonLightColor, sunLightColor, dayLightBlend);
+        float mainLightIntensity = glm::mix(moonLightIntensity, sunLightIntensity, dayLightBlend);
+        glm::vec3 ambientColor = glm::mix(moonAmbientColor, sunAmbientColor, dayLightBlend);
+        float diffuseIntensity = glm::mix(moonDiffuseIntensity, sunDiffuseIntensity, dayLightBlend);
+        float specularIntensity = glm::mix(moonSpecularIntensity, sunSpecularIntensity, dayLightBlend);
 
         glm::vec4 lightColor = glm::vec4(mainLightColor * mainLightIntensity, 1.0f);
 
-        glm::vec3 skyColor;
-        if (isDay) {
-            if (sunHeight > 0.6f) {
-                skyColor = glm::vec3(0.45f, 0.75f, 1.0f);
-            }
-            else if (sunHeight > 0.2f) {
-                float t = (sunHeight - 0.2f) / 0.4f;
-                skyColor = glm::mix(
-                    glm::vec3(0.85f, 0.55f, 0.45f),
-                    glm::vec3(0.45f, 0.75f, 1.0f),
-                    t
-                );
-            }
-            else if (sunHeight > 0.0f) {
-                float t = sunHeight / 0.2f;
-                skyColor = glm::mix(
-                    glm::vec3(0.08f, 0.06f, 0.15f),
-                    glm::vec3(0.85f, 0.55f, 0.45f),
-                    t
-                );
-            }
-            else {
-                skyColor = glm::vec3(0.04f, 0.03f, 0.08f);
-            }
-        }
-        else {
-            // Cielo nocturno visible (no completamente negro)
-            skyColor = glm::vec3(0.03f, 0.03f, 0.06f);
-            float moonHeight = std::abs(moonVertical);
-            skyColor += mainLightColor * (0.03f + moonHeight * 0.03f);
+        const glm::vec3 nightSkyColor(0.03f, 0.04f, 0.08f);
+        const glm::vec3 twilightSkyColor(0.88f, 0.50f, 0.34f);
+        const glm::vec3 daySkyColor(0.46f, 0.74f, 0.98f);
+        const float twilightBlend = glm::smoothstep(-0.22f, 0.18f, sunHeight);
+        const float dayBlend = glm::smoothstep(0.08f, 0.72f, sunHeight);
+        glm::vec3 skyColor = glm::mix(nightSkyColor, twilightSkyColor, twilightBlend);
+        skyColor = glm::mix(skyColor, daySkyColor, dayBlend);
+
+        if (sunHeight < 0.15f)
+        {
+            const float moonGlow = glm::smoothstep(-0.65f, 0.05f, -sunHeight) * glm::clamp(std::abs(moonVertical), 0.0f, 1.0f);
+            skyColor += mainLightColor * (0.018f + moonGlow * 0.035f);
         }
 
         glClearColor(skyColor.x, skyColor.y, skyColor.z, 1.0f);
