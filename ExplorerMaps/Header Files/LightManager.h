@@ -17,6 +17,7 @@ public:
 
     int CreatePointLight(const glm::vec3& position);
     int CreateAreaLight(const glm::vec3& position);
+    int CreateCubeLight(const glm::vec3& position);
     int DuplicateSelected(const SceneSelection& selection);
     bool DeleteSelected(SceneSelection& selection);
 

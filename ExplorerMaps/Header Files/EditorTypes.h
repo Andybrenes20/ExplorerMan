@@ -18,6 +18,12 @@ struct Entity
     float pickRadius = 1.0f;
 };
 
+enum class LightVisualType
+{
+    Point = 0,
+    Cube = 1
+};
+
 struct Light
 {
     std::string id;
@@ -27,6 +33,8 @@ struct Light
     float intensity = 1.0f;
     float radius = 10.0f;
     float helperSize = 8.0f;
+    LightVisualType visualType = LightVisualType::Point;
+    glm::vec3 boxSize = glm::vec3(8.0f);
     bool selected = false;
 };
 
@@ -87,13 +95,15 @@ inline glm::mat4 ComposeHelperMatrix(const Helper& helper)
     return ComposeTransformMatrix(helper.position, helper.rotation, helper.scale);
 }
 
-inline glm::mat4 ComposeLightMatrix(const Light& light)
-{
-    const float uniformScale = std::max(light.radius, 1.0f);
-    return ComposeTransformMatrix(light.position, glm::vec3(0.0f), glm::vec3(uniformScale));
-}
-
 inline float MaxComponent(const glm::vec3& value)
 {
     return std::max(value.x, std::max(value.y, value.z));
+}
+
+inline glm::mat4 ComposeLightMatrix(const Light& light)
+{
+    const float uniformScale = light.visualType == LightVisualType::Cube
+        ? std::max(MaxComponent(light.boxSize), 1.0f)
+        : std::max(light.radius, 1.0f);
+    return ComposeTransformMatrix(light.position, glm::vec3(0.0f), glm::vec3(uniformScale));
 }

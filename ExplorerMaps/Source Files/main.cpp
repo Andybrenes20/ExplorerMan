@@ -49,7 +49,7 @@ const float walkMaxDropDown = 45.0f;
 const float walkMaxSlopeDegrees = 68.0f;
 const float walkSpeed = 30.0f;
 
-// --- Opciones ------------------------------------------
+// --- Opciones ----------------w--------------------------
 const bool showCoordinatesInWindowTitle = true;
 const bool useFastRenderMode = false;
 const glm::vec3 blockedZoneMin = glm::vec3(240.0f, -260.0f, 360.0f);
@@ -59,7 +59,7 @@ const glm::vec3 blockedZoneMax = glm::vec3(310.0f, -150.0f, 435.0f);
 const float dayNightSpeed = 0.20f;
 const bool useProceduralDaySkybox = true;
 
-const float SUN_SIZE = 90.0f;
+const float SUN_SIZE = 120.0f;
 const float MOON_SIZE = 65.0f;
 const int lampGlowSectors = 16;
 const int lampGlowIndexCount = lampGlowSectors * (lampGlowSectors - 1) * 6;
@@ -768,6 +768,66 @@ void createSphere(GLuint& VAO, GLuint& VBO, GLuint& EBO, int sectors, float radi
     glBindVertexArray(0);
 }
 
+void createCube(GLuint& VAO, GLuint& VBO)
+{
+    const float vertices[] =
+    {
+        -0.5f, -0.5f, -0.5f,  0.0f,  0.0f, -1.0f,
+         0.5f, -0.5f, -0.5f,  0.0f,  0.0f, -1.0f,
+         0.5f,  0.5f, -0.5f,  0.0f,  0.0f, -1.0f,
+         0.5f,  0.5f, -0.5f,  0.0f,  0.0f, -1.0f,
+        -0.5f,  0.5f, -0.5f,  0.0f,  0.0f, -1.0f,
+        -0.5f, -0.5f, -0.5f,  0.0f,  0.0f, -1.0f,
+
+        -0.5f, -0.5f,  0.5f,  0.0f,  0.0f, 1.0f,
+         0.5f, -0.5f,  0.5f,  0.0f,  0.0f, 1.0f,
+         0.5f,  0.5f,  0.5f,  0.0f,  0.0f, 1.0f,
+         0.5f,  0.5f,  0.5f,  0.0f,  0.0f, 1.0f,
+        -0.5f,  0.5f,  0.5f,  0.0f,  0.0f, 1.0f,
+        -0.5f, -0.5f,  0.5f,  0.0f,  0.0f, 1.0f,
+
+        -0.5f,  0.5f,  0.5f, -1.0f,  0.0f, 0.0f,
+        -0.5f,  0.5f, -0.5f, -1.0f,  0.0f, 0.0f,
+        -0.5f, -0.5f, -0.5f, -1.0f,  0.0f, 0.0f,
+        -0.5f, -0.5f, -0.5f, -1.0f,  0.0f, 0.0f,
+        -0.5f, -0.5f,  0.5f, -1.0f,  0.0f, 0.0f,
+        -0.5f,  0.5f,  0.5f, -1.0f,  0.0f, 0.0f,
+
+         0.5f,  0.5f,  0.5f, 1.0f,  0.0f, 0.0f,
+         0.5f,  0.5f, -0.5f, 1.0f,  0.0f, 0.0f,
+         0.5f, -0.5f, -0.5f, 1.0f,  0.0f, 0.0f,
+         0.5f, -0.5f, -0.5f, 1.0f,  0.0f, 0.0f,
+         0.5f, -0.5f,  0.5f, 1.0f,  0.0f, 0.0f,
+         0.5f,  0.5f,  0.5f, 1.0f,  0.0f, 0.0f,
+
+        -0.5f, -0.5f, -0.5f,  0.0f, -1.0f, 0.0f,
+         0.5f, -0.5f, -0.5f,  0.0f, -1.0f, 0.0f,
+         0.5f, -0.5f,  0.5f,  0.0f, -1.0f, 0.0f,
+         0.5f, -0.5f,  0.5f,  0.0f, -1.0f, 0.0f,
+        -0.5f, -0.5f,  0.5f,  0.0f, -1.0f, 0.0f,
+        -0.5f, -0.5f, -0.5f,  0.0f, -1.0f, 0.0f,
+
+        -0.5f,  0.5f, -0.5f,  0.0f, 1.0f, 0.0f,
+         0.5f,  0.5f, -0.5f,  0.0f, 1.0f, 0.0f,
+         0.5f,  0.5f,  0.5f,  0.0f, 1.0f, 0.0f,
+         0.5f,  0.5f,  0.5f,  0.0f, 1.0f, 0.0f,
+        -0.5f,  0.5f,  0.5f,  0.0f, 1.0f, 0.0f,
+        -0.5f,  0.5f, -0.5f,  0.0f, 1.0f, 0.0f
+    };
+
+    glGenVertexArrays(1, &VAO);
+    glGenBuffers(1, &VBO);
+    glBindVertexArray(VAO);
+    glBindBuffer(GL_ARRAY_BUFFER, VBO);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)0);
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)(3 * sizeof(float)));
+    glEnableVertexAttribArray(3);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    glBindVertexArray(0);
+}
+
 glm::mat4 BuildSceneModelTransform(const Entity& entity, const glm::mat4& baseModelTransform)
 {
     return ComposeEntityMatrix(entity) * baseModelTransform;
@@ -812,6 +872,37 @@ void DrawLampGlowMarkers(const std::vector<Light>& lights, Shader& sphereShader,
     }
 }
 
+void DrawInteriorLightCubes(const std::vector<Light>& lights, Shader& lightShader, Camera& camera, GLuint cubeVAO, const glm::vec3& dirLightDirection)
+{
+    lightShader.Activate();
+    camera.Matrix(lightShader, "camMatrix");
+    glUniform3f(glGetUniformLocation(lightShader.ID, "dirLightDirection"), dirLightDirection.x, dirLightDirection.y, dirLightDirection.z);
+    glBindVertexArray(cubeVAO);
+
+    for (const Light& light : lights)
+    {
+        if (light.visualType != LightVisualType::Cube)
+        {
+            continue;
+        }
+
+        const glm::vec4 cubeColor(
+            glm::clamp(light.color.r * (0.65f + light.intensity * 0.25f), 0.0f, 1.0f),
+            glm::clamp(light.color.g * (0.65f + light.intensity * 0.25f), 0.0f, 1.0f),
+            glm::clamp(light.color.b * (0.65f + light.intensity * 0.25f), 0.0f, 1.0f),
+            0.95f);
+        const glm::mat4 model =
+            glm::translate(glm::mat4(1.0f), light.position) *
+            glm::scale(glm::mat4(1.0f), glm::max(light.boxSize, glm::vec3(1.0f)));
+
+        glUniformMatrix4fv(glGetUniformLocation(lightShader.ID, "model"), 1, GL_FALSE, glm::value_ptr(model));
+        glUniform4f(glGetUniformLocation(lightShader.ID, "lightColor"), cubeColor.x, cubeColor.y, cubeColor.z, cubeColor.w);
+        glDrawArrays(GL_TRIANGLES, 0, 36);
+    }
+
+    glBindVertexArray(0);
+}
+
 int main()
 {
     glfwInit();
@@ -853,6 +944,7 @@ int main()
     GLuint sunVAO, sunVBO, sunEBO;
     GLuint moonVAO, moonVBO, moonEBO;
     GLuint lampGlowVAO, lampGlowVBO, lampGlowEBO;
+    GLuint lightCubeVAO, lightCubeVBO;
     GLuint overlayVAO, overlayVBO;
     glGenVertexArrays(1, &overlayVAO);
     glGenBuffers(1, &overlayVBO);
@@ -866,6 +958,7 @@ int main()
     createSphere(sunVAO, sunVBO, sunEBO, 48, SUN_SIZE);
     createSphere(moonVAO, moonVBO, moonEBO, 36, MOON_SIZE);
     createSphere(lampGlowVAO, lampGlowVBO, lampGlowEBO, lampGlowSectors, lampGlowSize);
+    createCube(lightCubeVAO, lightCubeVBO);
 
     Model model("modelos/city.glb");
     Skybox skybox(
@@ -974,6 +1067,8 @@ int main()
         {
             model.Draw(shaderProgram, previewCamera, BuildSceneModelTransform(entity, baseModelTransform));
         }
+
+        DrawInteriorLightCubes(sceneData.lights, lightShader, previewCamera, lightCubeVAO, skySunDirection);
     };
     editor.Init(editorConfig);
 
@@ -1218,6 +1313,8 @@ int main()
             model.Draw(shaderProgram, camera, BuildSceneModelTransform(entity, baseModelTransform));
         }
 
+        DrawInteriorLightCubes(sceneData.lights, lightShader, camera, lightCubeVAO, skySunDirection);
+
         if (nightFactor > 0.02f) {
             sphereShader.Activate();
             glUniform1f(glGetUniformLocation(sphereShader.ID, "useTexture"), 0.0f);
@@ -1309,6 +1406,8 @@ int main()
     glDeleteVertexArrays(1, &lampGlowVAO);
     glDeleteBuffers(1, &lampGlowVBO);
     glDeleteBuffers(1, &lampGlowEBO);
+    glDeleteVertexArrays(1, &lightCubeVAO);
+    glDeleteBuffers(1, &lightCubeVBO);
     sunTexture.Delete();
     moonTexture.Delete();
     glDeleteVertexArrays(1, &overlayVAO);

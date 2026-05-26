@@ -50,6 +50,7 @@ private:
         None,
         PointLight,
         AreaLight,
+        CubeLight,
         MoveSelected
     };
 

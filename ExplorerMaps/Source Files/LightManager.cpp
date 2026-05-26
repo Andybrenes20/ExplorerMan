@@ -114,6 +114,16 @@ int LightManager::CreateAreaLight(const glm::vec3& position)
     return static_cast<int>(lights->size()) - 1;
 }
 
+int LightManager::CreateCubeLight(const glm::vec3& position)
+{
+    Light cubeLight = MakeLight("Cube Light", position, 55.0f, 12.0f, glm::vec3(1.0f, 0.86f, 0.62f));
+    cubeLight.visualType = LightVisualType::Cube;
+    cubeLight.boxSize = glm::vec3(10.0f, 10.0f, 10.0f);
+    cubeLight.intensity = 2.8f;
+    lights->push_back(cubeLight);
+    return static_cast<int>(lights->size()) - 1;
+}
+
 int LightManager::DuplicateSelected(const SceneSelection& selection)
 {
     if (!HasLightSelection(selection))
@@ -169,6 +179,12 @@ void LightManager::DrawHierarchy(const glm::vec3& spawnPosition, SceneSelection&
         selection = { SceneObjectType::Light, CreateAreaLight(spawnPosition) };
     }
 
+    ImGui::SameLine();
+    if (ImGui::Button("New cube light"))
+    {
+        selection = { SceneObjectType::Light, CreateCubeLight(spawnPosition) };
+    }
+
     ImGui::Separator();
 
     for (int i = 0; i < static_cast<int>(lights->size()); ++i)
@@ -205,6 +221,16 @@ void LightManager::DrawInspector(SceneSelection& selection, bool& dirty)
     dirty |= ImGui::DragFloat("Intensity", &light->intensity, 0.05f, 0.0f, 20.0f);
     dirty |= ImGui::DragFloat("Radius", &light->radius, 0.25f, 1.0f, 800.0f);
     dirty |= ImGui::DragFloat("Helper size", &light->helperSize, 0.25f, 1.0f, 200.0f);
+    int visualType = static_cast<int>(light->visualType);
+    if (ImGui::Combo("Visual", &visualType, "Point\0Cube\0"))
+    {
+        light->visualType = visualType == 1 ? LightVisualType::Cube : LightVisualType::Point;
+        dirty = true;
+    }
+    if (light->visualType == LightVisualType::Cube)
+    {
+        dirty |= ImGui::DragFloat3("Box size", &light->boxSize.x, 0.25f, 1.0f, 200.0f);
+    }
 
     if (ImGui::Button("Duplicate light"))
     {

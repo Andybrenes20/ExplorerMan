@@ -86,6 +86,14 @@ void LightEditor::RenderToolbar(SceneSelection& selection, const glm::vec3& spaw
     }
 
     ImGui::SameLine();
+    if (ImGui::Button("Cube Here"))
+    {
+        selection = { SceneObjectType::Light, manager.CreateCubeLight(spawnPosition) };
+        dirty = true;
+        newSelectionCreated = true;
+    }
+
+    ImGui::SameLine();
     if (ImGui::Button("Place Lamp"))
     {
         placementMode = PlacementMode::PointLight;
@@ -95,6 +103,12 @@ void LightEditor::RenderToolbar(SceneSelection& selection, const glm::vec3& spaw
     if (ImGui::Button("Place Area"))
     {
         placementMode = PlacementMode::AreaLight;
+    }
+
+    ImGui::SameLine();
+    if (ImGui::Button("Place Cube"))
+    {
+        placementMode = PlacementMode::CubeLight;
     }
 
     ImGui::SameLine();
@@ -249,7 +263,15 @@ glm::vec3 LightEditor::ComputePlacementPosition(const ImVec2& mousePosition, con
 
 int LightEditor::CreateRequestedLight(const glm::vec3& position)
 {
-    return placementMode == PlacementMode::AreaLight
-        ? manager.CreateAreaLight(position)
-        : manager.CreatePointLight(position);
+    if (placementMode == PlacementMode::AreaLight)
+    {
+        return manager.CreateAreaLight(position);
+    }
+
+    if (placementMode == PlacementMode::CubeLight)
+    {
+        return manager.CreateCubeLight(position);
+    }
+
+    return manager.CreatePointLight(position);
 }

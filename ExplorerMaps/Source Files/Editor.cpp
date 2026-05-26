@@ -636,7 +636,7 @@ void Editor::HandleSelectionKeyboardMove(float deltaTime)
         return;
     }
 
-    float moveStep = 40.0f * deltaTime;
+    float moveStep = 12.0f * deltaTime;
     const bool shiftDown = glfwGetKey(config.window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS ||
         glfwGetKey(config.window, GLFW_KEY_RIGHT_SHIFT) == GLFW_PRESS;
     const bool ctrlDown = glfwGetKey(config.window, GLFW_KEY_LEFT_CONTROL) == GLFW_PRESS ||
@@ -644,11 +644,11 @@ void Editor::HandleSelectionKeyboardMove(float deltaTime)
 
     if (shiftDown)
     {
-        moveStep *= 3.0f;
+        moveStep *= 2.0f;
     }
     if (ctrlDown)
     {
-        moveStep *= 0.25f;
+        moveStep *= 0.2f;
     }
 
     glm::vec3 movement(0.0f);

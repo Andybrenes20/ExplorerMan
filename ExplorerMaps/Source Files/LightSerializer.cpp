@@ -10,6 +10,13 @@ namespace
 {
     using json = nlohmann::json;
 
+    LightVisualType LightVisualTypeFromInt(int value)
+    {
+        return value == static_cast<int>(LightVisualType::Cube)
+            ? LightVisualType::Cube
+            : LightVisualType::Point;
+    }
+
     json ToJson(const glm::vec3& value)
     {
         return json::array({ value.x, value.y, value.z });
@@ -55,6 +62,8 @@ bool LightSerializer::Load(const std::string& filePath, std::vector<Light>& ligh
         light.intensity = lightJson.value("intensity", light.intensity);
         light.radius = lightJson.value("radius", light.radius);
         light.helperSize = lightJson.value("helperSize", light.helperSize);
+        light.visualType = LightVisualTypeFromInt(lightJson.value("visualType", static_cast<int>(light.visualType)));
+        light.boxSize = ToVec3(lightJson.value("boxSize", json::array()), light.boxSize);
         light.selected = false;
         lights.push_back(light);
     }
@@ -84,7 +93,9 @@ bool LightSerializer::Save(const std::string& filePath, const std::vector<Light>
             { "color", ToJson(light.color) },
             { "intensity", light.intensity },
             { "radius", light.radius },
-            { "helperSize", light.helperSize }
+            { "helperSize", light.helperSize },
+            { "visualType", static_cast<int>(light.visualType) },
+            { "boxSize", ToJson(light.boxSize) }
         });
     }
 

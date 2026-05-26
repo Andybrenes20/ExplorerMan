@@ -137,11 +137,22 @@ void LightGizmoRenderer::Render(const std::vector<Light>& lights, const EditorVi
         const glm::vec4 volumeColor = glm::vec4(baseColor.r, baseColor.g, baseColor.b, light.selected ? 0.95f : 0.55f);
         const glm::vec4 helperColor = glm::vec4(baseColor.r, baseColor.g, baseColor.b, 1.0f);
 
-        DrawPrimitive(
-            sphereLinesVao,
-            sphereLineVertexCount,
-            ComposeTransformMatrix(light.position, glm::vec3(0.0f), glm::vec3(std::max(light.radius, 1.0f))),
-            volumeColor);
+        if (light.visualType == LightVisualType::Cube)
+        {
+            DrawPrimitive(
+                cubeLinesVao,
+                cubeLineVertexCount,
+                ComposeTransformMatrix(light.position, glm::vec3(0.0f), glm::max(light.boxSize, glm::vec3(1.0f))),
+                volumeColor);
+        }
+        else
+        {
+            DrawPrimitive(
+                sphereLinesVao,
+                sphereLineVertexCount,
+                ComposeTransformMatrix(light.position, glm::vec3(0.0f), glm::vec3(std::max(light.radius, 1.0f))),
+                volumeColor);
+        }
         DrawPrimitive(
             cubeLinesVao,
             cubeLineVertexCount,
