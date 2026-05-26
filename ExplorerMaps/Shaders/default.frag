@@ -21,9 +21,9 @@ uniform vec4 lightColor;
 uniform float nightFactor;
 uniform int lampLightCount;
 uniform vec3 lampLightPositions[12];
-uniform vec3 lampLightColor;
-uniform float lampLightRadius;
-uniform float lampLightIntensity;
+uniform vec3 lampLightColors[12];
+uniform float lampLightRadii[12];
+uniform float lampLightIntensities[12];
 
 void main()
 {
@@ -49,6 +49,7 @@ void main()
 		float horizontalDistance = length(lampToFragment.xz);
 		float coneRadius = max(verticalDrop * 0.34f, 1.0f);
 		float coneMask = smoothstep(coneRadius, coneRadius * 0.45f, horizontalDistance);
+		float lampLightRadius = lampLightRadii[i];
 		float heightMask = smoothstep(0.0f, 18.0f, verticalDrop) *
 			(1.0f - smoothstep(lampLightRadius, lampLightRadius * 1.15f, verticalDrop));
 
@@ -57,10 +58,10 @@ void main()
 
 		vec3 lampDirection = normalize(toLamp);
 		float lampDiffuse = max(dot(normal, lampDirection), 0.0f);
-		lampContribution += lampLightColor * attenuation * (0.05f + lampDiffuse * lampLightIntensity);
+		lampContribution += lampLightColors[i] * attenuation * (0.05f + lampDiffuse * lampLightIntensities[i]);
 
 		float lampHeadMask = smoothstep(4.5f, 0.0f, distanceToLamp);
-		emissiveLamp += lampLightColor * lampHeadMask * 2.8f;
+		emissiveLamp += lampLightColors[i] * lampHeadMask * 2.8f;
 	}
 
 	litColor += base.rgb * lampContribution * nightFactor;

@@ -77,7 +77,7 @@
       <PreprocessorDefinitions>WIN32;_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp17</LanguageStandard>
-      <AdditionalIncludeDirectories>$(SolutionDir)dependencias\include;$(ProjectDir);$(ProjectDir)Header Files;$(ProjectDir)Source Files;$(ProjectDir)imgui</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir)dependencias\include;$(ProjectDir);$(ProjectDir)Header Files;$(ProjectDir)Source Files;$(ProjectDir)imgui;$(ProjectDir)third_party\ImGuizmo</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -100,7 +100,7 @@ xcopy /E /I /Y "$(ProjectDir)Texturas" "$(OutDir)Texturas"</Command>
       <PreprocessorDefinitions>WIN32;NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp17</LanguageStandard>
-      <AdditionalIncludeDirectories>$(SolutionDir)dependencias\include;$(ProjectDir);$(ProjectDir)Header Files;$(ProjectDir)Source Files;$(ProjectDir)imgui</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir)dependencias\include;$(ProjectDir);$(ProjectDir)Header Files;$(ProjectDir)Source Files;$(ProjectDir)imgui;$(ProjectDir)third_party\ImGuizmo</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -121,7 +121,7 @@ xcopy /E /I /Y "$(ProjectDir)Texturas" "$(OutDir)Texturas"</Command>
       <PreprocessorDefinitions>_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp17</LanguageStandard>
-      <AdditionalIncludeDirectories>$(SolutionDir)dependencias\include;$(ProjectDir);$(ProjectDir)Header Files;$(ProjectDir)Source Files;$(ProjectDir)imgui</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir)dependencias\include;$(ProjectDir);$(ProjectDir)Header Files;$(ProjectDir)Source Files;$(ProjectDir)imgui;$(ProjectDir)third_party\ImGuizmo</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -144,7 +144,7 @@ xcopy /E /I /Y "$(ProjectDir)Texturas" "$(OutDir)Texturas"</Command>
       <PreprocessorDefinitions>NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp17</LanguageStandard>
-      <AdditionalIncludeDirectories>$(SolutionDir)dependencias\include;$(ProjectDir);$(ProjectDir)Header Files;$(ProjectDir)Source Files;$(ProjectDir)imgui</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir)dependencias\include;$(ProjectDir);$(ProjectDir)Header Files;$(ProjectDir)Source Files;$(ProjectDir)imgui;$(ProjectDir)third_party\ImGuizmo</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -160,6 +160,12 @@ xcopy /E /I /Y "$(ProjectDir)Texturas" "$(OutDir)Texturas"</Command>
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="Source Files\CubemapTextureLoader.cpp" />
+    <ClCompile Include="Source Files\Editor.cpp" />
+    <ClCompile Include="Source Files\GizmoSystem.cpp" />
+    <ClCompile Include="Source Files\LightEditor.cpp" />
+    <ClCompile Include="Source Files\LightGizmoRenderer.cpp" />
+    <ClCompile Include="Source Files\LightManager.cpp" />
+    <ClCompile Include="Source Files\LightSerializer.cpp" />
     <ClCompile Include="imgui\imgui.cpp" />
     <ClCompile Include="imgui\imgui_draw.cpp" />
     <ClCompile Include="imgui\imgui_impl_glfw.cpp" />
@@ -171,19 +177,31 @@ xcopy /E /I /Y "$(ProjectDir)Texturas" "$(OutDir)Texturas"</Command>
     <ClCompile Include="Source Files\glad.c" />
     <ClCompile Include="Source Files\Mesh.cpp" />
     <ClCompile Include="Source Files\Model.cpp" />
+    <ClCompile Include="Source Files\PickingSystem.cpp" />
+    <ClCompile Include="Source Files\SceneSerializer.cpp" />
     <ClCompile Include="Source Files\shaderClass.cpp" />
     <ClCompile Include="Source Files\Skybox.cpp" />
     <ClCompile Include="Source Files\stb.cpp" />
     <ClCompile Include="Source Files\Texture.cpp" />
     <ClCompile Include="Source Files\VAO.cpp" />
     <ClCompile Include="Source Files\VBO.cpp" />
+    <ClCompile Include="third_party\ImGuizmo\ImGuizmo.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Header Files\Camara.h" />
     <ClInclude Include="Header Files\CubemapTextureLoader.h" />
     <ClInclude Include="Header Files\EBO.h" />
+    <ClInclude Include="Header Files\Editor.h" />
+    <ClInclude Include="Header Files\EditorTypes.h" />
+    <ClInclude Include="Header Files\GizmoSystem.h" />
+    <ClInclude Include="Header Files\LightEditor.h" />
+    <ClInclude Include="Header Files\LightGizmoRenderer.h" />
+    <ClInclude Include="Header Files\LightManager.h" />
+    <ClInclude Include="Header Files\LightSerializer.h" />
     <ClInclude Include="Header Files\Mesh.h" />
     <ClInclude Include="Header Files\Model.h" />
+    <ClInclude Include="Header Files\PickingSystem.h" />
+    <ClInclude Include="Header Files\SceneSerializer.h" />
     <ClInclude Include="Header Files\shaderClass.h" />
     <ClInclude Include="Header Files\Skybox.h" />
     <ClInclude Include="Header Files\Texture.h" />
@@ -200,6 +218,7 @@ xcopy /E /I /Y "$(ProjectDir)Texturas" "$(OutDir)Texturas"</Command>
     <ClInclude Include="imgui\imstb_truetype.h" />
     <ClInclude Include="Shader.h" />
     <ClInclude Include="Source Files\stb_image.h" />
+    <ClInclude Include="third_party\ImGuizmo\ImGuizmo.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="assimp-vc143-mt.pdb" />
@@ -213,6 +232,8 @@ xcopy /E /I /Y "$(ProjectDir)Texturas" "$(OutDir)Texturas"</Command>
     <None Include="modelos\city.glb" />
     <None Include="Shaders\default.frag" />
     <None Include="Shaders\default.vert" />
+    <None Include="Shaders\editor_line.frag" />
+    <None Include="Shaders\editor_line.vert" />
     <None Include="Shaders\light.frag" />
     <None Include="Shaders\light.vert" />
     <None Include="Shaders\menu.frag" />

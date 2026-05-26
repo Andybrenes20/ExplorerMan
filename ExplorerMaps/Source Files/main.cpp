@@ -2,6 +2,7 @@
 
 //------- Ignore this ----------
 #include<algorithm>
+#include<array>
 #include<cmath>
 #include<filesystem>
 #include<iomanip>
@@ -22,6 +23,7 @@ extern "C"
 
 #include "Model.h"
 #include "Skybox.h"
+#include "Editor.h"
 
 #define IMGUI_IMPL_OPENGL_LOADER_GLAD
 #include "imgui.h"
@@ -64,25 +66,15 @@ const int lampGlowIndexCount = lampGlowSectors * (lampGlowSectors - 1) * 6;
 const float lampGlowSize = 1.0f;
 const float lampCoreSize = 0.20f;
 const float lampHaloSize = 20.0f;
-const int lampLightCount = 12;
-const glm::vec3 lampLightPositions[lampLightCount] =
+constexpr std::size_t maxLampLightCount = 12;
+const std::array<glm::vec3, 2> defaultLampLightPositions =
 {
     glm::vec3(130.0f, -159.0f, 572.0f),
-    glm::vec3(-19.022f, -159.0f, 572.0f),
-    /*glm::vec3(210.0f, -159.0f, 435.0f),
-    glm::vec3(255.0f, -159.0f, 360.0f),
-    glm::vec3(300.0f, -159.0f, 285.0f),
-    glm::vec3(342.0f, -159.0f, 210.0f),
-    glm::vec3(42.0f, -159.0f, 535.0f),
-    glm::vec3(12.0f, -159.0f, 455.0f),
-    glm::vec3(-20.0f, -159.0f, 375.0f),
-    glm::vec3(-52.0f, -159.0f, 295.0f),
-    glm::vec3(-84.0f, -159.0f, 215.0f),
-    glm::vec3(95.0f, -159.0f, 160.0f)*/
+    glm::vec3(-19.022f, -159.0f, 572.0f)
 };
-const glm::vec3 lampLightColor = glm::vec3(1.0f, 0.92f, 0.78f);
-const float lampLightRadius = 50.0f;
-const float lampLightIntensity = 2.10f;
+const glm::vec3 defaultLampLightColor = glm::vec3(1.0f, 0.92f, 0.78f);
+const float defaultLampLightRadius = 50.0f;
+const float defaultLampLightIntensity = 2.10f;
 
 enum class EnvironmentMode
 {
@@ -776,6 +768,50 @@ void createSphere(GLuint& VAO, GLuint& VBO, GLuint& EBO, int sectors, float radi
     glBindVertexArray(0);
 }
 
+glm::mat4 BuildSceneModelTransform(const Entity& entity, const glm::mat4& baseModelTransform)
+{
+    return ComposeEntityMatrix(entity) * baseModelTransform;
+}
+
+void UploadLampLightUniforms(Shader& shaderProgram, const std::vector<Light>& lights)
+{
+    std::array<glm::vec3, maxLampLightCount> lightPositions{};
+    std::array<glm::vec3, maxLampLightCount> lightColors{};
+    std::array<float, maxLampLightCount> lightRadii{};
+    std::array<float, maxLampLightCount> lightIntensities{};
+
+    const int activeLightCount = static_cast<int>(std::min<std::size_t>(lights.size(), maxLampLightCount));
+    for (int i = 0; i < activeLightCount; ++i)
+    {
+        lightPositions[i] = lights[i].position;
+        lightColors[i] = lights[i].color;
+        lightRadii[i] = lights[i].radius;
+        lightIntensities[i] = lights[i].intensity;
+    }
+
+    glUniform1i(glGetUniformLocation(shaderProgram.ID, "lampLightCount"), activeLightCount);
+    glUniform3fv(glGetUniformLocation(shaderProgram.ID, "lampLightPositions[0]"), static_cast<GLsizei>(maxLampLightCount), glm::value_ptr(lightPositions[0]));
+    glUniform3fv(glGetUniformLocation(shaderProgram.ID, "lampLightColors[0]"), static_cast<GLsizei>(maxLampLightCount), glm::value_ptr(lightColors[0]));
+    glUniform1fv(glGetUniformLocation(shaderProgram.ID, "lampLightRadii[0]"), static_cast<GLsizei>(maxLampLightCount), lightRadii.data());
+    glUniform1fv(glGetUniformLocation(shaderProgram.ID, "lampLightIntensities[0]"), static_cast<GLsizei>(maxLampLightCount), lightIntensities.data());
+}
+
+void DrawLampGlowMarkers(const std::vector<Light>& lights, Shader& sphereShader, GLuint lampGlowVAO, float nightFactor)
+{
+    glBindVertexArray(lampGlowVAO);
+    for (const Light& light : lights)
+    {
+        const glm::mat4 lampModel =
+            glm::translate(glm::mat4(1.0f), light.position) *
+            glm::scale(glm::mat4(1.0f), glm::vec3(std::max(lampCoreSize, light.helperSize * 0.04f)));
+
+        glUniform3f(glGetUniformLocation(sphereShader.ID, "color"), light.color.r, light.color.g, light.color.b);
+        glUniform1f(glGetUniformLocation(sphereShader.ID, "alpha"), glm::clamp(nightFactor * light.intensity * 0.55f, 0.0f, 1.0f));
+        glUniformMatrix4fv(glGetUniformLocation(sphereShader.ID, "model"), 1, GL_FALSE, glm::value_ptr(lampModel));
+        glDrawElements(GL_TRIANGLES, lampGlowIndexCount, GL_UNSIGNED_INT, 0);
+    }
+}
+
 int main()
 {
     glfwInit();
@@ -844,9 +880,33 @@ int main()
     if (modelRadius < 1.0f) modelRadius = 1.0f;
 
     const float normalizationScale = targetSceneRadius / modelRadius;
-    const glm::mat4 modelTransform =
+    const glm::mat4 baseModelTransform =
         glm::scale(glm::mat4(1.0f), glm::vec3(normalizationScale)) *
         glm::translate(glm::mat4(1.0f), -modelCenter);
+
+    EditorSceneData sceneData;
+    Entity cityEntity;
+    cityEntity.id = "city_root";
+    cityEntity.name = "City";
+    cityEntity.assetPath = "modelos/city.glb";
+    cityEntity.pickRadius = targetSceneRadius;
+    sceneData.entities.push_back(cityEntity);
+
+    for (std::size_t i = 0; i < defaultLampLightPositions.size(); ++i)
+    {
+        Light light;
+        light.id = "lamp_" + std::to_string(i);
+        light.name = "Lamp " + std::to_string(i + 1);
+        light.position = defaultLampLightPositions[i];
+        light.color = defaultLampLightColor;
+        light.radius = defaultLampLightRadius;
+        light.intensity = defaultLampLightIntensity;
+        light.helperSize = 7.5f;
+        sceneData.lights.push_back(light);
+    }
+
+    SceneSerializer preloadSerializer;
+    preloadSerializer.Load("scene_overrides.json", sceneData);
 
     glEnable(GL_DEPTH_TEST);
     glDisable(GL_CULL_FACE);
@@ -859,10 +919,67 @@ int main()
     float lastFrame = 0.0f;
     float lastTitleUpdate = 0.0f;
     glm::vec3 lastTitlePosition = camera.Position;
+    float timeOfDayAngle = 0.0f;
+    float sunHeight = 0.0f;
+    float dayFactor = 0.0f;
+    float nightFactor = 0.0f;
+    float manualTimeOfDay = 0.18f;
+    SkyCloudSettings cloudSettings;
+    glm::vec3 sunPos(0.0f);
+    glm::vec3 moonPos(0.0f);
+    bool isDay = true;
+    glm::vec3 mainLightPos(0.0f);
+    glm::vec3 mainLightColor(1.0f);
+    float mainLightIntensity = 1.0f;
+    glm::vec3 ambientColor(0.3f);
+    float diffuseIntensity = 1.0f;
+    float specularIntensity = 0.5f;
+    glm::vec4 lightColor(1.0f);
+    glm::vec3 skySunDirection(0.0f, 1.0f, 0.0f);
+
+    Editor editor;
+    EditorConfig editorConfig;
+    editorConfig.window = window;
+    editorConfig.camera = &camera;
+    editorConfig.scene = &sceneData;
+    editorConfig.sceneFilePath = "scene_overrides.json";
+    editorConfig.lightFilePath = "lights_overrides.json";
+    editorConfig.cameraFov = cameraFov;
+    editorConfig.nearPlane = cameraNearPlane;
+    editorConfig.farPlane = cameraFarPlane;
+    editorConfig.viewportRenderer = [&](const EditorViewportRenderRequest& request)
+    {
+        Camera previewCamera = camera;
+        previewCamera.width = request.width;
+        previewCamera.height = request.height;
+        previewCamera.Position = request.cameraPosition;
+        previewCamera.cameraMatrix = request.projection * request.view;
+
+        shaderProgram.Activate();
+        glUniform4f(glGetUniformLocation(shaderProgram.ID, "lightColor"), lightColor.x, lightColor.y, lightColor.z, lightColor.w);
+        glUniform3f(glGetUniformLocation(shaderProgram.ID, "lightPos"), mainLightPos.x, mainLightPos.y, mainLightPos.z);
+        glUniform3f(glGetUniformLocation(shaderProgram.ID, "moonPos"), moonPos.x, moonPos.y, moonPos.z);
+        glUniform3f(glGetUniformLocation(shaderProgram.ID, "viewPos"), request.cameraPosition.x, request.cameraPosition.y, request.cameraPosition.z);
+        glUniform3f(glGetUniformLocation(shaderProgram.ID, "ambientColor"), ambientColor.x, ambientColor.y, ambientColor.z);
+        glUniform1f(glGetUniformLocation(shaderProgram.ID, "time"), lastFrame);
+        glUniform1f(glGetUniformLocation(shaderProgram.ID, "dayFactor"), dayFactor);
+        glUniform1f(glGetUniformLocation(shaderProgram.ID, "nightFactor"), nightFactor);
+        glUniform1f(glGetUniformLocation(shaderProgram.ID, "isDay"), isDay ? 1.0f : 0.0f);
+        glUniform1f(glGetUniformLocation(shaderProgram.ID, "diffuseIntensity"), diffuseIntensity);
+        glUniform1f(glGetUniformLocation(shaderProgram.ID, "specularIntensity"), specularIntensity);
+        glUniform1f(glGetUniformLocation(shaderProgram.ID, "sunHeight"), sunHeight);
+        UploadLampLightUniforms(shaderProgram, sceneData.lights);
+
+        for (const Entity& entity : sceneData.entities)
+        {
+            model.Draw(shaderProgram, previewCamera, BuildSceneModelTransform(entity, baseModelTransform));
+        }
+    };
+    editor.Init(editorConfig);
 
     glm::vec3 snappedStart;
     if (model.TrySnapToWalkableSurface(
-        camera.Position, modelTransform,
+        camera.Position, BuildSceneModelTransform(sceneData.entities.front(), baseModelTransform),
         walkProbeRadius, walkEyeHeight,
         walkMaxStepUp, walkMaxDropDown, walkMaxSlopeDegrees,
         snappedStart))
@@ -870,17 +987,6 @@ int main()
         camera.Position = snappedStart;
         lastTitlePosition = camera.Position;
     }
-
-    float timeOfDayAngle = 0.0f;
-    float sunHeight = 0.0f;
-    float dayFactor = 0.0f;
-    float nightFactor = 0.0f;
-    float manualTimeOfDay = 0.18f;
-    SkyCloudSettings cloudSettings;
-
-    glm::vec3 sunPos;
-    glm::vec3 moonPos;
-    bool isDay = true;
 
     EnvironmentMode environmentMode = EnvironmentMode::Auto;
     EnvironmentMenuState environmentMenu;
@@ -895,16 +1001,20 @@ int main()
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
+        editor.Update(deltaTime);
 
         bool shouldExit = false;
-        HandleEnvironmentMenu(window, environmentMenu, environmentMode, shouldExit);
-        HandleSkyPanel(window, skyPanel, environmentMode, manualTimeOfDay);
+        if (!editor.IsActive())
+        {
+            HandleEnvironmentMenu(window, environmentMenu, environmentMode, shouldExit);
+            HandleSkyPanel(window, skyPanel, environmentMode, manualTimeOfDay);
+        }
         if (shouldExit)
         {
             glfwSetWindowShouldClose(window, true);
         }
 
-        const bool wantsUiCursor = environmentMenu.open || skyPanel.open;
+        const bool wantsUiCursor = environmentMenu.open || skyPanel.open || editor.WantsCursor();
         if (wantsUiCursor && !menuCursorVisible)
         {
             glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
@@ -1011,19 +1121,19 @@ int main()
         const float moonDiffuseIntensity = glm::mix(0.22f, 0.35f, moonPresence);
         const float moonSpecularIntensity = glm::mix(0.10f, 0.15f, moonPresence);
 
-        glm::vec3 mainLightPos = glm::mix(moonPos, sunPos, dayLightBlend);
-        glm::vec3 skySunDirection = glm::normalize(glm::vec3(
+        mainLightPos = glm::mix(moonPos, sunPos, dayLightBlend);
+        skySunDirection = glm::normalize(glm::vec3(
             std::cos(sunAngleRad),
             std::sin(sunAngleRad),
             std::sin(sunAngleRad) * 0.5f
         ));
-        glm::vec3 mainLightColor = glm::mix(moonLightColor, sunLightColor, dayLightBlend);
-        float mainLightIntensity = glm::mix(moonLightIntensity, sunLightIntensity, dayLightBlend);
-        glm::vec3 ambientColor = glm::mix(moonAmbientColor, sunAmbientColor, dayLightBlend);
-        float diffuseIntensity = glm::mix(moonDiffuseIntensity, sunDiffuseIntensity, dayLightBlend);
-        float specularIntensity = glm::mix(moonSpecularIntensity, sunSpecularIntensity, dayLightBlend);
+        mainLightColor = glm::mix(moonLightColor, sunLightColor, dayLightBlend);
+        mainLightIntensity = glm::mix(moonLightIntensity, sunLightIntensity, dayLightBlend);
+        ambientColor = glm::mix(moonAmbientColor, sunAmbientColor, dayLightBlend);
+        diffuseIntensity = glm::mix(moonDiffuseIntensity, sunDiffuseIntensity, dayLightBlend);
+        specularIntensity = glm::mix(moonSpecularIntensity, sunSpecularIntensity, dayLightBlend);
 
-        glm::vec4 lightColor = glm::vec4(mainLightColor * mainLightIntensity, 1.0f);
+        lightColor = glm::vec4(mainLightColor * mainLightIntensity, 1.0f);
 
         const glm::vec3 nightSkyColor(0.03f, 0.04f, 0.08f);
         const glm::vec3 twilightSkyColor(0.88f, 0.50f, 0.34f);
@@ -1042,8 +1152,9 @@ int main()
         glClearColor(skyColor.x, skyColor.y, skyColor.z, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
+        const glm::mat4 sceneModelTransform = BuildSceneModelTransform(sceneData.entities.front(), baseModelTransform);
         const glm::vec3 prevPos = camera.Position;
-        if (!environmentMenu.open && !skyPanel.open)
+        if (!environmentMenu.open && !skyPanel.open && !editor.IsActive())
         {
             if (environmentMode == EnvironmentMode::Manual && !skyPanel.open)
             {
@@ -1062,13 +1173,13 @@ int main()
         {
             glm::vec3 snapped;
             if (model.TrySnapToWalkableSurface(
-                camera.Position, modelTransform,
+                camera.Position, sceneModelTransform,
                 walkProbeRadius, walkEyeHeight,
                 walkMaxStepUp, walkMaxDropDown, walkMaxSlopeDegrees,
                 snapped))
                 camera.Position = snapped;
             else if (model.TrySnapToWalkableSurface(
-                prevPos, modelTransform,
+                prevPos, sceneModelTransform,
                 walkProbeRadius, walkEyeHeight,
                 walkMaxStepUp, walkMaxDropDown, walkMaxSlopeDegrees,
                 snapped))
@@ -1100,13 +1211,12 @@ int main()
         glUniform1f(glGetUniformLocation(shaderProgram.ID, "diffuseIntensity"), diffuseIntensity);
         glUniform1f(glGetUniformLocation(shaderProgram.ID, "specularIntensity"), specularIntensity);
         glUniform1f(glGetUniformLocation(shaderProgram.ID, "sunHeight"), sunHeight);
-        glUniform1i(glGetUniformLocation(shaderProgram.ID, "lampLightCount"), lampLightCount);
-        glUniform3fv(glGetUniformLocation(shaderProgram.ID, "lampLightPositions[0]"), lampLightCount, glm::value_ptr(lampLightPositions[0]));
-        glUniform3f(glGetUniformLocation(shaderProgram.ID, "lampLightColor"), lampLightColor.r, lampLightColor.g, lampLightColor.b);
-        glUniform1f(glGetUniformLocation(shaderProgram.ID, "lampLightRadius"), lampLightRadius);
-        glUniform1f(glGetUniformLocation(shaderProgram.ID, "lampLightIntensity"), lampLightIntensity);
+        UploadLampLightUniforms(shaderProgram, sceneData.lights);
 
-        model.Draw(shaderProgram, camera, modelTransform);
+        for (const Entity& entity : sceneData.entities)
+        {
+            model.Draw(shaderProgram, camera, BuildSceneModelTransform(entity, baseModelTransform));
+        }
 
         if (nightFactor > 0.02f) {
             sphereShader.Activate();
@@ -1119,17 +1229,7 @@ int main()
             glUniformMatrix4fv(glGetUniformLocation(sphereShader.ID, "view"), 1, GL_FALSE, glm::value_ptr(view));
             glUniformMatrix4fv(glGetUniformLocation(sphereShader.ID, "projection"), 1, GL_FALSE, glm::value_ptr(projection));
 
-            glBindVertexArray(lampGlowVAO);
-            for (int i = 0; i < lampLightCount; ++i)
-            {
-                glm::mat4 lampModel =
-                    glm::translate(glm::mat4(1.0f), lampLightPositions[i]) *
-                    glm::scale(glm::mat4(1.0f), glm::vec3(lampCoreSize));
-                glUniform3f(glGetUniformLocation(sphereShader.ID, "color"), 1.0f, 0.96f, 0.88f);
-                glUniform1f(glGetUniformLocation(sphereShader.ID, "alpha"), glm::clamp(nightFactor * 1.4f, 0.0f, 1.0f));
-                glUniformMatrix4fv(glGetUniformLocation(sphereShader.ID, "model"), 1, GL_FALSE, glm::value_ptr(lampModel));
-                glDrawElements(GL_TRIANGLES, lampGlowIndexCount, GL_UNSIGNED_INT, 0);
-            }
+            DrawLampGlowMarkers(sceneData.lights, sphereShader, lampGlowVAO, nightFactor);
             glUniform1f(glGetUniformLocation(sphereShader.ID, "unlit"), 0.0f);
             glUniform1f(glGetUniformLocation(sphereShader.ID, "alpha"), 1.0f);
         }
@@ -1183,6 +1283,7 @@ int main()
 
         DrawEnvironmentMenu(environmentMenu, environmentMode, manualTimeOfDay, overlayShader, overlayVAO, overlayVBO);
         DrawSkyControlImGui(skyPanel, environmentMode, manualTimeOfDay, cloudSettings);
+        editor.Render();
         ImGui::Render();
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 
@@ -1212,6 +1313,7 @@ int main()
     moonTexture.Delete();
     glDeleteVertexArrays(1, &overlayVAO);
     glDeleteBuffers(1, &overlayVBO);
+    editor.Shutdown();
     ImGui_ImplOpenGL3_Shutdown();
     ImGui_ImplGlfw_Shutdown();
     ImGui::DestroyContext();
