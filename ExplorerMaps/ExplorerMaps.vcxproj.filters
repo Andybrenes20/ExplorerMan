@@ -99,6 +99,33 @@
     <ClCompile Include="imgui\imgui_widgets.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="Source Files\Editor.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="Source Files\GizmoSystem.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="Source Files\LightEditor.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="Source Files\LightGizmoRenderer.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="Source Files\LightManager.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="Source Files\LightSerializer.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="Source Files\PickingSystem.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="Source Files\SceneSerializer.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="third_party\ImGuizmo\ImGuizmo.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Header Files\ColliderManager.h">
@@ -182,6 +209,36 @@
     <ClInclude Include="imgui\imstb_truetype.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="Header Files\Editor.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Header Files\EditorTypes.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Header Files\GizmoSystem.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Header Files\LightEditor.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Header Files\LightGizmoRenderer.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Header Files\LightManager.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Header Files\LightSerializer.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Header Files\PickingSystem.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Header Files\SceneSerializer.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="third_party\ImGuizmo\ImGuizmo.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="colliders_overrides.json">
@@ -244,10 +301,48 @@
     </None>
     <None Include="Shaders\menu.vert" />
     <None Include="Shaders\menu.frag" />
+    <None Include="Shaders\editor_line.frag" />
+    <None Include="Shaders\editor_line.vert" />
   </ItemGroup>
   <ItemGroup>
     <Image Include="Texturas\Fonts\calibri.ttf">
       <Filter>Resource Files\Textures</Filter>
+    </Image>
+    <Image Include="Texturas\Skybox_Day\nx.png">
+      <Filter>Resource Files</Filter>
+    </Image>
+    <Image Include="Texturas\Skybox_Day\ny.png">
+      <Filter>Resource Files</Filter>
+    </Image>
+    <Image Include="Texturas\Skybox_Day\nz.png">
+      <Filter>Resource Files</Filter>
+    </Image>
+    <Image Include="Texturas\Skybox_Day\px.png">
+      <Filter>Resource Files</Filter>
+    </Image>
+    <Image Include="Texturas\Skybox_Day\py.png">
+      <Filter>Resource Files</Filter>
+    </Image>
+    <Image Include="Texturas\Skybox_Day\pz.png">
+      <Filter>Resource Files</Filter>
+    </Image>
+    <Image Include="Texturas\Skybox_Nigth\nx.png">
+      <Filter>Resource Files</Filter>
+    </Image>
+    <Image Include="Texturas\Skybox_Nigth\ny.png">
+      <Filter>Resource Files</Filter>
+    </Image>
+    <Image Include="Texturas\Skybox_Nigth\nz.png">
+      <Filter>Resource Files</Filter>
+    </Image>
+    <Image Include="Texturas\Skybox_Nigth\px.png">
+      <Filter>Resource Files</Filter>
+    </Image>
+    <Image Include="Texturas\Skybox_Nigth\py.png">
+      <Filter>Resource Files</Filter>
+    </Image>
+    <Image Include="Texturas\Skybox_Nigth\pz.png">
+      <Filter>Resource Files</Filter>
     </Image>
   </ItemGroup>
 </Project>

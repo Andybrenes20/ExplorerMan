@@ -1,6 +1,7 @@
 #include"Model.h"
 
 #include<algorithm>
+#include<array>
 #include<cctype>
 #include<cstring>
 #include<stdexcept>
@@ -15,6 +16,10 @@ namespace
 {
 	constexpr float kMeshCullDistanceMultiplier = 1.55f;
 	constexpr float kCollisionEpsilon = 0.001f;
+	constexpr float kLodNearDistanceMultiplier = 0.35f;
+	constexpr float kLodMidDistanceMultiplier = 0.85f;
+	constexpr float kLodTinyMeshScreenRatio = 0.0025f;
+	constexpr float kLodSmallMeshScreenRatio = 0.0055f;
 
 	std::string toLowerCopy(std::string value)
 	{
@@ -174,6 +179,97 @@ namespace
 		const float dz = point.z - candidate.z;
 		return dx * dx + dz * dz;
 	}
+
+	struct Frustum
+	{
+		std::array<glm::vec4, 6> planes;
+
+		bool IntersectsSphere(const glm::vec3& center, float radius) const
+		{
+			for (const glm::vec4& plane : planes)
+			{
+				const float distance = glm::dot(glm::vec3(plane), center) + plane.w;
+				if (distance < -radius)
+				{
+					return false;
+				}
+			}
+
+			return true;
+		}
+	};
+
+	glm::vec4 NormalizePlane(const glm::vec4& plane)
+	{
+		const float length = glm::length(glm::vec3(plane));
+		if (length <= 0.0001f)
+		{
+			return plane;
+		}
+
+		return plane / length;
+	}
+
+	Frustum BuildFrustum(const glm::mat4& viewProjection)
+	{
+		Frustum frustum;
+		frustum.planes[0] = NormalizePlane(glm::vec4(
+			viewProjection[0][3] + viewProjection[0][0],
+			viewProjection[1][3] + viewProjection[1][0],
+			viewProjection[2][3] + viewProjection[2][0],
+			viewProjection[3][3] + viewProjection[3][0]));
+		frustum.planes[1] = NormalizePlane(glm::vec4(
+			viewProjection[0][3] - viewProjection[0][0],
+			viewProjection[1][3] - viewProjection[1][0],
+			viewProjection[2][3] - viewProjection[2][0],
+			viewProjection[3][3] - viewProjection[3][0]));
+		frustum.planes[2] = NormalizePlane(glm::vec4(
+			viewProjection[0][3] + viewProjection[0][1],
+			viewProjection[1][3] + viewProjection[1][1],
+			viewProjection[2][3] + viewProjection[2][1],
+			viewProjection[3][3] + viewProjection[3][1]));
+		frustum.planes[3] = NormalizePlane(glm::vec4(
+			viewProjection[0][3] - viewProjection[0][1],
+			viewProjection[1][3] - viewProjection[1][1],
+			viewProjection[2][3] - viewProjection[2][1],
+			viewProjection[3][3] - viewProjection[3][1]));
+		frustum.planes[4] = NormalizePlane(glm::vec4(
+			viewProjection[0][3] + viewProjection[0][2],
+			viewProjection[1][3] + viewProjection[1][2],
+			viewProjection[2][3] + viewProjection[2][2],
+			viewProjection[3][3] + viewProjection[3][2]));
+		frustum.planes[5] = NormalizePlane(glm::vec4(
+			viewProjection[0][3] - viewProjection[0][2],
+			viewProjection[1][3] - viewProjection[1][2],
+			viewProjection[2][3] - viewProjection[2][2],
+			viewProjection[3][3] - viewProjection[3][2]));
+		return frustum;
+	}
+
+	float MaxWorldScale(const glm::mat4& transform)
+	{
+		return std::max({
+			glm::length(glm::vec3(transform[0])),
+			glm::length(glm::vec3(transform[1])),
+			glm::length(glm::vec3(transform[2]))
+		});
+	}
+
+	bool ShouldRenderByLod(float cameraDistance, float worldRadius, float sceneRadius, bool cameraInsideStructure)
+	{
+		if (cameraInsideStructure || cameraDistance <= sceneRadius * kLodNearDistanceMultiplier)
+		{
+			return true;
+		}
+
+		const float apparentSize = worldRadius / std::max(cameraDistance, 0.001f);
+		if (cameraDistance > sceneRadius * kLodMidDistanceMultiplier)
+		{
+			return apparentSize >= kLodSmallMeshScreenRatio;
+		}
+
+		return apparentSize >= kLodTinyMeshScreenRatio;
+	}
 }
 
 Model::Model(const char* file)
@@ -211,15 +307,18 @@ void Model::Draw(Shader& shader, Camera& camera, const glm::mat4& worldTransform
 	camera.Matrix(shader, "camMatrix");
 
 	const float worldScale = glm::length(glm::vec3(worldTransform[0]));
+	const float sceneRadius = GetRadius() * worldScale;
 	const float maxVisibleDistance = GetRadius() * worldScale * (cameraInsideStructure ? 0.60f : kMeshCullDistanceMultiplier);
+	const Frustum frustum = BuildFrustum(camera.cameraMatrix);
 
 	// Go over all meshes and draw each one
 	for (unsigned int i = 0; i < meshes.size(); i++)
 	{
+		const glm::mat4 meshWorldTransform = worldTransform * matricesMeshes[i];
 		if (i < meshBoundsCenters.size() && i < meshBoundsRadii.size())
 		{
-			const glm::vec3 worldCenter = glm::vec3(worldTransform * matricesMeshes[i] * glm::vec4(meshBoundsCenters[i], 1.0f));
-			const float worldRadius = meshBoundsRadii[i] * worldScale;
+			const glm::vec3 worldCenter = glm::vec3(meshWorldTransform * glm::vec4(meshBoundsCenters[i], 1.0f));
+			const float worldRadius = meshBoundsRadii[i] * MaxWorldScale(meshWorldTransform);
 			const float visibleDistance = maxVisibleDistance + worldRadius;
 			const float visibleDistanceSquared = visibleDistance * visibleDistance;
 			const glm::vec3 toMesh = camera.Position - worldCenter;
@@ -227,13 +326,22 @@ void Model::Draw(Shader& shader, Camera& camera, const glm::mat4& worldTransform
 			{
 				continue;
 			}
-			if (glm::dot(toMesh, toMesh) > visibleDistanceSquared)
+			const float distanceSquared = glm::dot(toMesh, toMesh);
+			if (distanceSquared > visibleDistanceSquared)
+			{
+				continue;
+			}
+			if (!frustum.IntersectsSphere(worldCenter, worldRadius))
+			{
+				continue;
+			}
+			if (!ShouldRenderByLod(std::sqrt(distanceSquared), worldRadius, sceneRadius, cameraInsideStructure))
 			{
 				continue;
 			}
 		}
 
-		meshes[i].Mesh::Draw(shader, worldTransform * matricesMeshes[i]);
+		meshes[i].Mesh::Draw(shader, meshWorldTransform);
 	}
 }
 

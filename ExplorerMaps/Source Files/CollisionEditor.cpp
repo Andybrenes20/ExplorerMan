@@ -58,7 +58,6 @@ void CollisionEditor::Update(float deltaTime)
     HandleCreationInput();
     HandleSelectionInput();
     HandleSelectionKeyboardMove(deltaTime);
-    ApplyGizmo();
     ClampSelectedScale();
 
     if (autoSave && dirty)
@@ -168,6 +167,27 @@ void CollisionEditor::RenderViewportWindow()
     available.x = std::max(available.x, 420.0f);
     available.y = std::max(available.y, 260.0f);
 
+    if (ImGui::Button("Add Cube##viewport"))
+    {
+        AddCubeAtView();
+    }
+    ImGui::SameLine();
+    int viewportOperationIndex = static_cast<int>(operation);
+    ImGui::RadioButton("Move##viewport", &viewportOperationIndex, static_cast<int>(ColliderOperation::Move));
+    ImGui::SameLine();
+    ImGui::RadioButton("Rotate##viewport", &viewportOperationIndex, static_cast<int>(ColliderOperation::Rotate));
+    ImGui::SameLine();
+    ImGui::RadioButton("Scale##viewport", &viewportOperationIndex, static_cast<int>(ColliderOperation::Scale));
+    operation = static_cast<ColliderOperation>(viewportOperationIndex);
+    ImGui::SameLine();
+    ImGui::Checkbox("Local##viewport", &localTransformMode);
+    ImGui::SameLine();
+    ImGui::Checkbox("Snap##viewport", &useSnap);
+
+    available = ImGui::GetContentRegionAvail();
+    available.x = std::max(available.x, 420.0f);
+    available.y = std::max(available.y, 260.0f);
+
     RenderSceneToFramebuffer(available);
     if (!framebufferReady || colorTexture == 0)
     {
@@ -181,6 +201,7 @@ void CollisionEditor::RenderViewportWindow()
     viewportState.origin = ImGui::GetItemRectMin();
     viewportState.size = ImGui::GetItemRectSize();
     viewportState.hovered = ImGui::IsItemHovered();
+    ApplyGizmo();
 
     if (creationState.armed || creationState.dragging)
     {
@@ -224,6 +245,9 @@ void CollisionEditor::HandleShortcuts()
         const bool gPressed = glfwGetKey(config.window, GLFW_KEY_G) == GLFW_PRESS;
         const bool rPressed = glfwGetKey(config.window, GLFW_KEY_R) == GLFW_PRESS;
         const bool sPressed = glfwGetKey(config.window, GLFW_KEY_S) == GLFW_PRESS;
+        const bool wPressed = glfwGetKey(config.window, GLFW_KEY_W) == GLFW_PRESS;
+        const bool ePressed = glfwGetKey(config.window, GLFW_KEY_E) == GLFW_PRESS;
+        const bool addPressed = glfwGetKey(config.window, GLFW_KEY_B) == GLFW_PRESS;
         const bool deletePressed = glfwGetKey(config.window, GLFW_KEY_DELETE) == GLFW_PRESS;
         const bool ctrlDown = glfwGetKey(config.window, GLFW_KEY_LEFT_CONTROL) == GLFW_PRESS ||
             glfwGetKey(config.window, GLFW_KEY_RIGHT_CONTROL) == GLFW_PRESS;
@@ -233,6 +257,14 @@ void CollisionEditor::HandleShortcuts()
         {
             operation = ColliderOperation::Move;
         }
+        if (wPressed && !wLatch)
+        {
+            operation = ColliderOperation::Move;
+        }
+        if (ePressed && !eLatch)
+        {
+            operation = ColliderOperation::Rotate;
+        }
         if (rPressed && !rLatch)
         {
             operation = ColliderOperation::Rotate;
@@ -240,6 +272,10 @@ void CollisionEditor::HandleShortcuts()
         if (sPressed && !sLatch)
         {
             operation = ColliderOperation::Scale;
+        }
+        if (addPressed && !addLatch)
+        {
+            AddCubeAtView();
         }
         if (deletePressed && !deleteLatch)
         {
@@ -253,6 +289,9 @@ void CollisionEditor::HandleShortcuts()
         gLatch = gPressed;
         rLatch = rPressed;
         sLatch = sPressed;
+        wLatch = wPressed;
+        eLatch = ePressed;
+        addLatch = addPressed;
         deleteLatch = deletePressed;
         duplicateLatch = duplicatePressed;
     }
@@ -261,6 +300,9 @@ void CollisionEditor::HandleShortcuts()
         gLatch = false;
         rLatch = false;
         sLatch = false;
+        wLatch = false;
+        eLatch = false;
+        addLatch = false;
         deleteLatch = false;
         duplicateLatch = false;
     }
@@ -479,7 +521,7 @@ void CollisionEditor::ApplyGizmo()
 
     ImGuizmo::BeginFrame();
     ImGuizmo::SetOrthographic(false);
-    ImGuizmo::SetDrawlist();
+    ImGuizmo::SetDrawlist(ImGui::GetWindowDrawList());
     ImGuizmo::SetRect(viewportState.origin.x, viewportState.origin.y, viewportState.size.x, viewportState.size.y);
 
     glm::mat4 matrix = ComposeGizmoMatrix(*selectedCollider);
@@ -493,12 +535,33 @@ void CollisionEditor::ApplyGizmo()
         gizmoOperation = ImGuizmo::SCALE;
     }
 
+    ImGuizmo::MODE gizmoMode = localTransformMode ? ImGuizmo::LOCAL : ImGuizmo::WORLD;
+    if (gizmoOperation == ImGuizmo::SCALE)
+    {
+        gizmoMode = ImGuizmo::LOCAL;
+    }
+
+    float snapValues[3] =
+    {
+        gizmoOperation == ImGuizmo::ROTATE ? rotateSnap : moveSnap.x,
+        gizmoOperation == ImGuizmo::ROTATE ? rotateSnap : moveSnap.y,
+        gizmoOperation == ImGuizmo::ROTATE ? rotateSnap : moveSnap.z
+    };
+    if (gizmoOperation == ImGuizmo::SCALE)
+    {
+        snapValues[0] = scaleSnap;
+        snapValues[1] = scaleSnap;
+        snapValues[2] = scaleSnap;
+    }
+
     ImGuizmo::Manipulate(
         &viewportState.request.view[0][0],
         &viewportState.request.projection[0][0],
         gizmoOperation,
-        gizmoOperation == ImGuizmo::SCALE ? ImGuizmo::LOCAL : ImGuizmo::WORLD,
-        &matrix[0][0]);
+        gizmoMode,
+        &matrix[0][0],
+        nullptr,
+        useSnap ? snapValues : nullptr);
 
     if (ImGuizmo::IsUsing())
     {
@@ -526,6 +589,11 @@ void CollisionEditor::RenderPanel()
     ImGui::DragFloat("Camera collision radius", &collisionRadius, 0.1f, 0.5f, 32.0f, "%.2f");
     ImGui::DragFloat("New collider height", &newColliderHeight, 0.25f, 1.0f, 200.0f, "%.2f");
 
+    if (ImGui::Button("Add Cube"))
+    {
+        AddCubeAtView();
+    }
+    ImGui::SameLine();
     if (ImGui::Button(creationState.armed || creationState.dragging ? "Cancel Box" : "Create Box"))
     {
         if (creationState.armed || creationState.dragging)
@@ -559,6 +627,21 @@ void CollisionEditor::RenderPanel()
     ImGui::SameLine();
     ImGui::RadioButton("Scale##collision", &operationIndex, static_cast<int>(ColliderOperation::Scale));
     operation = static_cast<ColliderOperation>(operationIndex);
+    ImGui::Checkbox("Local axes", &localTransformMode);
+    ImGui::SameLine();
+    ImGui::Checkbox("Snap", &useSnap);
+    if (operation == ColliderOperation::Move)
+    {
+        ImGui::DragFloat3("Move snap", &moveSnap.x, 0.1f, 0.1f, 100.0f, "%.2f");
+    }
+    else if (operation == ColliderOperation::Rotate)
+    {
+        ImGui::DragFloat("Rotate snap", &rotateSnap, 0.5f, 1.0f, 180.0f, "%.1f");
+    }
+    else
+    {
+        ImGui::DragFloat("Scale snap", &scaleSnap, 0.01f, 0.01f, 10.0f, "%.2f");
+    }
 
     BoxCollider* selectedCollider = GetSelectedCollider();
     if (selectedCollider)
@@ -601,6 +684,8 @@ void CollisionEditor::RenderPanel()
     ImGui::BulletText("Green = selected, red = overlap");
     ImGui::BulletText("Delete removes selected collider");
     ImGui::BulletText("Ctrl+D duplicates selected collider");
+    ImGui::BulletText("B adds a cube in front of the camera");
+    ImGui::BulletText("G/W move, R/E rotate, S scale");
     ImGui::BulletText("Arrows move selected collider. PgUp/PgDn or U/O move height");
 
     ImGui::End();
@@ -659,6 +744,38 @@ void CollisionEditor::RenderSceneToFramebuffer(const ImVec2& viewportSize)
     int windowHeight = 0;
     glfwGetFramebufferSize(config.window, &windowWidth, &windowHeight);
     glViewport(0, 0, windowWidth, windowHeight);
+}
+
+void CollisionEditor::AddCubeAtView()
+{
+    if (!config.manager || !config.camera)
+    {
+        return;
+    }
+
+    glm::vec3 forward = config.camera->Orientation;
+    if (glm::length(forward) < 0.0001f)
+    {
+        forward = glm::vec3(0.0f, 0.0f, -1.0f);
+    }
+    forward = glm::normalize(forward);
+
+    glm::vec3 horizontalForward(forward.x, 0.0f, forward.z);
+    if (glm::length(horizontalForward) < 0.0001f)
+    {
+        horizontalForward = glm::vec3(0.0f, 0.0f, -1.0f);
+    }
+    horizontalForward = glm::normalize(horizontalForward);
+
+    const glm::vec3 scale(6.0f, std::max(newColliderHeight, 1.0f), 6.0f);
+    glm::vec3 position = config.camera->Position + horizontalForward * 24.0f;
+    position.y = config.camera->Position.y - config.placementPlaneOffset + scale.y * 0.5f;
+
+    selection.index = config.manager->AddBox(position, scale, glm::vec3(0.0f));
+    operation = ColliderOperation::Move;
+    creationState.armed = false;
+    creationState.dragging = false;
+    dirty = true;
 }
 
 void CollisionEditor::SaveChanges()

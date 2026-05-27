@@ -85,6 +85,7 @@ private:
     void ApplyGizmo();
     void RenderPanel();
     void RenderSceneToFramebuffer(const ImVec2& viewportSize);
+    void AddCubeAtView();
     void SaveChanges();
     void LoadChanges();
     void DuplicateSelection();
@@ -115,9 +116,17 @@ private:
     float collisionRadius = 6.0f;
     float newColliderHeight = 12.0f;
     ColliderOperation operation = ColliderOperation::Move;
+    bool localTransformMode = true;
+    bool useSnap = false;
+    glm::vec3 moveSnap = glm::vec3(1.0f);
+    float rotateSnap = 15.0f;
+    float scaleSnap = 0.25f;
     bool gLatch = false;
     bool rLatch = false;
     bool sLatch = false;
+    bool wLatch = false;
+    bool eLatch = false;
+    bool addLatch = false;
     bool deleteLatch = false;
     bool duplicateLatch = false;
 

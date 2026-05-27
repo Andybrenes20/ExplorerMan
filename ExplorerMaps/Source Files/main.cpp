@@ -700,6 +700,98 @@ std::vector<std::string> GetSkyboxFacePaths(EnvironmentMode mode)
 {
     return {};
 }
+
+void HandleCollisionEditorCameraControls(GLFWwindow* window, Camera& camera, float deltaTime)
+{
+    static bool rightMouseActive = false;
+    static double lastMouseX = 0.0;
+    static double lastMouseY = 0.0;
+
+    const bool rightMouseDown = glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS;
+    if (!rightMouseDown || ImGui::IsAnyItemActive())
+    {
+        rightMouseActive = false;
+        return;
+    }
+
+    double mouseX = 0.0;
+    double mouseY = 0.0;
+    glfwGetCursorPos(window, &mouseX, &mouseY);
+
+    if (!rightMouseActive)
+    {
+        rightMouseActive = true;
+        lastMouseX = mouseX;
+        lastMouseY = mouseY;
+    }
+
+    const float mouseDeltaX = static_cast<float>(mouseX - lastMouseX);
+    const float mouseDeltaY = static_cast<float>(mouseY - lastMouseY);
+    lastMouseX = mouseX;
+    lastMouseY = mouseY;
+
+    glm::vec3 forward = glm::length(camera.Orientation) > 0.0001f
+        ? glm::normalize(camera.Orientation)
+        : glm::vec3(0.0f, 0.0f, -1.0f);
+
+    const float lookScale = camera.sensitivity * 0.0015f;
+    glm::vec3 pitchAxis = glm::cross(forward, camera.Up);
+    if (glm::length(pitchAxis) < 0.0001f)
+    {
+        pitchAxis = glm::vec3(1.0f, 0.0f, 0.0f);
+    }
+    pitchAxis = glm::normalize(pitchAxis);
+
+    const glm::mat4 pitchRotation = glm::rotate(glm::mat4(1.0f), glm::radians(-mouseDeltaY * lookScale), pitchAxis);
+    const glm::vec3 pitchedForward = glm::vec3(pitchRotation * glm::vec4(forward, 0.0f));
+    const float orientationDot = glm::clamp(glm::dot(glm::normalize(pitchedForward), glm::normalize(camera.Up)), -1.0f, 1.0f);
+    const float orientationAngle = std::acos(orientationDot);
+    if (std::abs(orientationAngle - glm::radians(90.0f)) <= glm::radians(85.0f))
+    {
+        forward = glm::normalize(pitchedForward);
+    }
+
+    const glm::mat4 yawRotation = glm::rotate(glm::mat4(1.0f), glm::radians(-mouseDeltaX * lookScale), camera.Up);
+    camera.Orientation = glm::normalize(glm::vec3(yawRotation * glm::vec4(forward, 0.0f)));
+
+    glm::vec3 moveForward = camera.Orientation;
+    if (!camera.flyMode)
+    {
+        moveForward.y = 0.0f;
+    }
+    if (glm::length(moveForward) < 0.0001f)
+    {
+        moveForward = glm::vec3(0.0f, 0.0f, -1.0f);
+    }
+    moveForward = glm::normalize(moveForward);
+
+    glm::vec3 right = glm::cross(moveForward, camera.Up);
+    if (glm::length(right) < 0.0001f)
+    {
+        right = glm::vec3(1.0f, 0.0f, 0.0f);
+    }
+    right = glm::normalize(right);
+
+    float currentSpeed = camera.speed * deltaTime;
+    if (glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS || glfwGetKey(window, GLFW_KEY_RIGHT_SHIFT) == GLFW_PRESS)
+    {
+        currentSpeed *= 1.8f;
+    }
+
+    if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
+        camera.Position += currentSpeed * moveForward;
+    if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS)
+        camera.Position -= currentSpeed * moveForward;
+    if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS)
+        camera.Position -= currentSpeed * right;
+    if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
+        camera.Position += currentSpeed * right;
+    if (camera.flyMode && glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS)
+        camera.Position += currentSpeed * camera.Up;
+    if (camera.flyMode && (glfwGetKey(window, GLFW_KEY_LEFT_CONTROL) == GLFW_PRESS || glfwGetKey(window, GLFW_KEY_RIGHT_CONTROL) == GLFW_PRESS))
+        camera.Position -= currentSpeed * camera.Up;
+}
+
 void createSphere(GLuint& VAO, GLuint& VBO, GLuint& EBO, int sectors, float radius) {
     std::vector<float> vertices;
     std::vector<unsigned int> indices;
@@ -962,7 +1054,7 @@ int main()
     createSphere(lampGlowVAO, lampGlowVBO, lampGlowEBO, lampGlowSectors, lampGlowSize);
     createCube(lightCubeVAO, lightCubeVBO);
 
-    Model model("modelos/city2.glb");
+    Model model("modelos/city.glb");
     Skybox skybox(
         GetSkyboxFacePaths(EnvironmentMode::Day),
         GetSkyboxFacePaths(EnvironmentMode::Night),
@@ -1314,6 +1406,10 @@ int main()
             }
 
             camera.Inputs(window, deltaTime);
+        }
+        else if (!environmentMenu.open && !skyPanel.open && !editor.IsActive() && collisionEditor.IsActive())
+        {
+            HandleCollisionEditorCameraControls(window, camera, deltaTime);
         }
 
         if (!camera.flyMode)
