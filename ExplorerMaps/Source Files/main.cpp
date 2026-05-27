@@ -1054,28 +1054,11 @@ int main()
     createSphere(lampGlowVAO, lampGlowVBO, lampGlowEBO, lampGlowSectors, lampGlowSize);
     createCube(lightCubeVAO, lightCubeVBO);
 
-    Model model("modelos/city.glb");
-    Skybox skybox(
-        GetSkyboxFacePaths(EnvironmentMode::Day),
-        GetSkyboxFacePaths(EnvironmentMode::Night),
-        "Shaders/skybox_cubemap.vert",
-        "Shaders/skybox_cubemap.frag"
-    );
-
-    glm::vec3 modelCenter = model.GetCenter();
-    float modelRadius = model.GetRadius();
-    if (modelRadius < 1.0f) modelRadius = 1.0f;
-
-    const float normalizationScale = targetSceneRadius / modelRadius;
-    const glm::mat4 baseModelTransform =
-        glm::scale(glm::mat4(1.0f), glm::vec3(normalizationScale)) *
-        glm::translate(glm::mat4(1.0f), -modelCenter);
-
     EditorSceneData sceneData;
     Entity cityEntity;
     cityEntity.id = "city_root";
     cityEntity.name = "City";
-    cityEntity.assetPath = "modelos/city.glb";
+    cityEntity.assetPath = "modelos/city2.glb";
     cityEntity.pickRadius = targetSceneRadius;
     sceneData.entities.push_back(cityEntity);
 
@@ -1094,6 +1077,26 @@ int main()
 
     SceneSerializer preloadSerializer;
     preloadSerializer.Load("scene_overrides.json", sceneData);
+
+    const std::string activeModelPath = (!sceneData.entities.empty() && !sceneData.entities.front().assetPath.empty())
+        ? sceneData.entities.front().assetPath
+        : std::string("modelos/city2.glb");
+    Model model(activeModelPath.c_str());
+    Skybox skybox(
+        GetSkyboxFacePaths(EnvironmentMode::Day),
+        GetSkyboxFacePaths(EnvironmentMode::Night),
+        "Shaders/skybox_cubemap.vert",
+        "Shaders/skybox_cubemap.frag"
+    );
+
+    glm::vec3 modelCenter = model.GetCenter();
+    float modelRadius = model.GetRadius();
+    if (modelRadius < 1.0f) modelRadius = 1.0f;
+
+    const float normalizationScale = targetSceneRadius / modelRadius;
+    const glm::mat4 baseModelTransform =
+        glm::scale(glm::mat4(1.0f), glm::vec3(normalizationScale)) *
+        glm::translate(glm::mat4(1.0f), -modelCenter);
 
     glEnable(GL_DEPTH_TEST);
     glDisable(GL_CULL_FACE);

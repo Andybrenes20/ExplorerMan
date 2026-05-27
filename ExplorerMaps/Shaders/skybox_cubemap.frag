@@ -53,6 +53,17 @@ float fbm(vec2 p)
 	return value;
 }
 
+float starLayer(vec2 p, float scale, float threshold, float sizeBoost)
+{
+	vec2 cell = floor(p * scale);
+	vec2 local = fract(p * scale) - 0.5;
+	float seed = hash(cell);
+	float active = smoothstep(threshold, 1.0, seed);
+	float radius = length(local);
+	float core = smoothstep(0.055 * sizeBoost, 0.0, radius);
+	return active * core;
+}
+
 float remap01(float value, float minValue, float maxValue)
 {
 	return clamp((value - minValue) / (maxValue - minValue), 0.0, 1.0);
@@ -83,15 +94,27 @@ void main()
 		proceduralDayColor = vec4(proceduralSky, 1.0);
 	}
 
-	float stars = smoothstep(0.985, 1.0, fbm(dir.xz * 180.0 + dir.y * 23.0));
-	vec3 nightBase = mix(vec3(0.01, 0.02, 0.05), vec3(0.05, 0.07, 0.12), clamp(dir.y * 0.5 + 0.5, 0.0, 1.0));
-	nightBase += vec3(1.0) * stars * smoothstep(-0.12, -0.55, sunHeight);
+	vec2 starUv = vec2(atan(dir.z, dir.x) / 6.2831853 + 0.5, asin(clamp(dir.y, -1.0, 1.0)) / 3.1415926 + 0.5);
+	float twinkle = 0.75 + 0.25 * sin(time * 0.55 + dir.x * 43.0 + dir.z * 31.0);
+	float denseStars =
+		starLayer(starUv + vec2(0.0, time * 0.0002), 180.0, 0.962, 1.10) * 1.10 +
+		starLayer(starUv + vec2(0.17, -0.11), 260.0, 0.972, 0.92) * 1.00 +
+		starLayer(starUv + vec2(-0.23, 0.09), 340.0, 0.982, 0.78) * 0.88 +
+		starLayer(starUv + vec2(0.31, 0.27), 420.0, 0.989, 0.64) * 0.62;
+	float hazeStars = smoothstep(0.66, 0.96, fbm(starUv * 95.0 + vec2(dir.y * 14.0, dir.x * 11.0))) * 0.30;
+	float stars = (denseStars + hazeStars) * twinkle * 1.22;
+	float starVisibility = smoothstep(-0.02, -0.48, sunHeight) * smoothstep(-0.28, 0.18, dir.y);
+
+	vec3 nightBase = mix(vec3(0.008, 0.014, 0.038), vec3(0.05, 0.07, 0.13), clamp(dir.y * 0.5 + 0.5, 0.0, 1.0));
+	float nightNebula = fbm(starUv * 18.0 + vec2(0.0, time * 0.00008));
+	nightBase += vec3(0.03, 0.035, 0.06) * smoothstep(0.52, 0.88, nightNebula) * 0.45;
+	nightBase += vec3(1.0, 0.98, 0.96) * stars * starVisibility * 1.10;
 	proceduralNightColor = vec4(nightBase, 1.0);
 
 	vec4 skyColor = mix(proceduralDayColor, proceduralNightColor, clamp(blendFactor, 0.0, 1.0));
 
-	float cloudBand = smoothstep(-0.08, 0.42, dir.y) * (1.0 - smoothstep(0.88, 0.995, dir.y));
-	float dayCloudVisibility = (1.0 - clamp(blendFactor, 0.0, 1.0)) * smoothstep(-0.18, 0.18, sunHeight);
+	float cloudBand = smoothstep(-0.12, 0.46, dir.y) * (1.0 - smoothstep(0.90, 0.995, dir.y));
+	float dayCloudVisibility = (1.0 - clamp(blendFactor, 0.0, 1.0) * 0.75) * smoothstep(-0.26, 0.20, sunHeight);
 
 	if (useProceduralClouds && dayCloudVisibility > 0.001 && cloudBand > 0.0)
 	{
@@ -116,10 +139,10 @@ void main()
 		float wisps = fbm(vec2(distortedUv.x * 1.8, distortedUv.y * (5.5 + curliness * 3.0)) + time * vec2(0.0020, 0.0004) * speed);
 
 		float cloudShape = largeShape * 0.60 + mediumShape * 0.24 + detailShape * 0.08 + wisps * 0.08;
-		float coverage = mix(0.40, 0.48, remap01(sunHeight, -0.08, 0.45)) - (cloudCoverage - 0.5) * 0.18;
-		float cloudMask = smoothstep(coverage, coverage + 0.11, cloudShape) * cloudBand;
-		float cloudCore = smoothstep(coverage + 0.03, coverage + 0.16, cloudShape);
-		float cloudRim = smoothstep(coverage - 0.01, coverage + 0.10, cloudShape) - cloudCore;
+		float coverage = mix(0.38, 0.46, remap01(sunHeight, -0.08, 0.45)) - (cloudCoverage - 0.5) * 0.28;
+		float cloudMask = smoothstep(coverage, coverage + 0.14, cloudShape) * cloudBand;
+		float cloudCore = smoothstep(coverage + 0.02, coverage + 0.18, cloudShape);
+		float cloudRim = smoothstep(coverage - 0.02, coverage + 0.12, cloudShape) - cloudCore;
 
 		float lightFacing = smoothstep(-0.18, 0.32, dot(dir, skySunDir));
 		float warmSun = remap01(sunHeight, -0.02, 0.30);
@@ -133,10 +156,10 @@ void main()
 		vec3 cloudColor = mix(shadowColor, bodyColor, selfShadow);
 		cloudColor = mix(cloudColor, highlightColor, cloudRim * (0.25 + lightFacing * 0.75) * (0.45 + warmSun * 0.55));
 
-		float cloudOpacity = cloudMask * (0.78 + cloudCore * 0.20) * dayCloudVisibility * densityBoost;
+		float cloudOpacity = cloudMask * (0.88 + cloudCore * 0.24) * dayCloudVisibility * densityBoost;
 		cloudOpacity = clamp(cloudOpacity, 0.0, 1.0);
 		skyColor.rgb = mix(skyColor.rgb, cloudColor, cloudOpacity);
-		skyColor.rgb += highlightColor * cloudRim * lightFacing * 0.24 * dayCloudVisibility;
+		skyColor.rgb += highlightColor * cloudRim * lightFacing * 0.28 * dayCloudVisibility;
 	}
 
 	FragColor = vec4(clamp(skyColor.rgb, 0.0, 1.0), skyColor.a);

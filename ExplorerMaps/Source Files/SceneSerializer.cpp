@@ -56,6 +56,7 @@ bool SceneSerializer::Load(const std::string& filePath, EditorSceneData& scene) 
                 continue;
             }
 
+            entityIt->assetPath = entityJson.value("assetPath", entityIt->assetPath);
             entityIt->position = ToVec3(entityJson.value("position", json::array()), entityIt->position);
             entityIt->rotation = ToVec3(entityJson.value("rotation", json::array()), entityIt->rotation);
             entityIt->scale = ToVec3(entityJson.value("scale", json::array()), entityIt->scale);

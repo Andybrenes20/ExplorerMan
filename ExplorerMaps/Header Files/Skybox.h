@@ -12,11 +12,11 @@
 
 struct SkyCloudSettings
 {
-	float coverage = 0.62f;
-	float speed = 1.0f;
-	float crispiness = 1.0f;
-	float curliness = 0.75f;
-	float density = 0.95f;
+	float coverage = 0.86f;
+	float speed = 1.05f;
+	float crispiness = 0.92f;
+	float curliness = 0.92f;
+	float density = 1.18f;
 };
 
 class Skybox
