@@ -303,6 +303,7 @@
     <None Include="Shaders\menu.frag" />
     <None Include="Shaders\editor_line.frag" />
     <None Include="Shaders\editor_line.vert" />
+    <None Include="modelos\Coches\Car_1\source\Car1.gltf" />
   </ItemGroup>
   <ItemGroup>
     <Image Include="Texturas\Fonts\calibri.ttf">

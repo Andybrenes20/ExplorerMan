@@ -250,6 +250,7 @@ xcopy /Y "$(SolutionDir)dependencias\bin\*.dll" "$(OutDir)"</Command>
     <None Include="Iluminacion\lighting.frag" />
     <None Include="Iluminacion\lighting.vs" />
     <None Include="modelos\city.glb" />
+    <None Include="modelos\Coches\Car_1\source\Car1.gltf" />
     <None Include="Shaders\collider_debug.frag" />
     <None Include="Shaders\collider_debug.vert" />
     <None Include="Shaders\default.frag" />

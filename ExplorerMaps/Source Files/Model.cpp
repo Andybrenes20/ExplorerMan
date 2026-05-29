@@ -277,27 +277,14 @@ Model::Model(const char* file)
 	Model::file = file;
 	const std::string path = file;
 
-	if (hasExtension(path, ".glb"))
+	if (hasExtension(path, ".glb") || hasExtension(path, ".gltf"))
 	{
 		loadAssimpCollision(file);
 		loadAssimpModel(file);
 		return;
 	}
 
-	if (!hasExtension(path, ".gltf"))
-	{
-		throw std::runtime_error("Formato de modelo no soportado. Usa .gltf o .glb.");
-	}
-
-	// Make a JSON object
-	std::string text = get_file_contents(file);
-	JSON = json::parse(text);
-
-	// Get the binary data
-	data = getData();
-
-	// Traverse all nodes
-	traverseNode(0);
+	throw std::runtime_error("Formato de modelo no soportado. Usa .gltf o .glb.");
 }
 
 void Model::Draw(Shader& shader, Camera& camera, const glm::mat4& worldTransform, bool cameraInsideStructure)
@@ -308,7 +295,9 @@ void Model::Draw(Shader& shader, Camera& camera, const glm::mat4& worldTransform
 
 	const float worldScale = glm::length(glm::vec3(worldTransform[0]));
 	const float sceneRadius = GetRadius() * worldScale;
-	const float maxVisibleDistance = GetRadius() * worldScale * (cameraInsideStructure ? 0.60f : kMeshCullDistanceMultiplier);
+	const float maxVisibleDistance = std::max(
+		GetRadius() * worldScale * (cameraInsideStructure ? 0.60f : kMeshCullDistanceMultiplier),
+		220.0f);
 	const Frustum frustum = BuildFrustum(camera.cameraMatrix);
 
 	// Go over all meshes and draw each one
@@ -1241,6 +1230,10 @@ void Model::processAssimpMesh(aiMesh* mesh, const aiScene* scene, const glm::mat
 				mesh->mColors[0][i].g,
 				mesh->mColors[0][i].b
 			);
+			if (glm::length(vertex.color) < 0.03f)
+			{
+				vertex.color = hasMaterialBaseColor ? materialBaseColor : glm::vec3(1.0f);
+			}
 		}
 		else if (hasDiffuseTexture && !hasMaterialBaseColor)
 		{

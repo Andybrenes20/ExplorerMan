@@ -3,6 +3,7 @@
 //------- Ignore this ----------
 #include<algorithm>
 #include<array>
+#include<cfloat>
 #include<cmath>
 #include<filesystem>
 #include<iomanip>
@@ -86,6 +87,26 @@ enum class EnvironmentMode
     Manual
 };
 
+enum class AppScreen
+{
+    MainMenu,
+    Loading,
+    World
+};
+
+enum class LoadingDestination
+{
+    MainMenu,
+    World
+};
+
+enum class MainMenuAction
+{
+    None,
+    StartWorld,
+    Quit
+};
+
 struct EnvironmentMenuState
 {
     bool open = false;
@@ -114,6 +135,43 @@ struct SkyPanelState
     bool rightWasDown = false;
 };
 
+struct InteractionState
+{
+    SceneSelection target;
+    std::string targetName;
+    std::string message;
+    float messageUntil = 0.0f;
+    bool interactWasDown = false;
+};
+
+struct WalkAnimationState
+{
+    float phase = 0.0f;
+    float amount = 0.0f;
+};
+
+struct DrivableCarState
+{
+    glm::vec3 position = glm::vec3(150.0f, -179.0f, 620.0f);
+    float yawDegrees = -90.0f;
+    float speed = 0.0f;
+    bool driving = false;
+    bool interactWasDown = false;
+};
+
+struct MainMenuState
+{
+    int selection = 0;
+    bool mouseWasDown = false;
+    bool upWasDown = false;
+    bool downWasDown = false;
+    bool enterWasDown = false;
+    bool gamepadUpWasDown = false;
+    bool gamepadDownWasDown = false;
+    bool gamepadAcceptWasDown = false;
+    bool gamepadCancelWasDown = false;
+};
+
 constexpr int kEnvironmentMenuItemCount = 4;
 constexpr int kEnvironmentMenuExitIndex = 3;
 constexpr float kManualTimeStep = 1.0f / 24.0f;
@@ -122,6 +180,132 @@ constexpr int kSkyPanelItemCount = 3;
 bool IsInsideRect(double px, double py, float x, float y, float w, float h)
 {
     return px >= x && px <= (x + w) && py >= y && py <= (y + h);
+}
+
+bool IsGameplayMovementPressed(GLFWwindow* window)
+{
+    return glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS ||
+        glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS ||
+        glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS ||
+        glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS;
+}
+
+float IntersectInteractionSphere(const glm::vec3& rayOrigin, const glm::vec3& rayDirection, const glm::vec3& center, float radius);
+
+glm::vec3 CarForward(float yawDegrees)
+{
+    const float yawRadians = glm::radians(yawDegrees);
+    return glm::normalize(glm::vec3(std::cos(yawRadians), 0.0f, std::sin(yawRadians)));
+}
+
+glm::mat4 BuildCarTransform(const DrivableCarState& car)
+{
+    constexpr float carVisualYawOffset = 90.0f;
+    return glm::translate(glm::mat4(1.0f), car.position) *
+        glm::rotate(glm::mat4(1.0f), glm::radians(car.yawDegrees + carVisualYawOffset), glm::vec3(0.0f, 1.0f, 0.0f)) *
+        glm::scale(glm::mat4(1.0f), glm::vec3(18.0f));
+}
+
+bool IsLookingAtCar(const Camera& camera, const DrivableCarState& car)
+{
+    const glm::vec3 rayOrigin = camera.Position;
+    const glm::vec3 rayDirection = glm::normalize(camera.Orientation);
+    const float distance = IntersectInteractionSphere(rayOrigin, rayDirection, car.position + glm::vec3(0.0f, 9.0f, 0.0f), 34.0f);
+    return distance < 160.0f;
+}
+
+void UpdateDrivableCar(
+    GLFWwindow* window,
+    Camera& camera,
+    DrivableCarState& car,
+    const Model& cityModel,
+    const glm::mat4& sceneModelTransform,
+    InteractionState& interaction,
+    float currentFrame,
+    float deltaTime)
+{
+    const bool interactDown = glfwGetKey(window, GLFW_KEY_E) == GLFW_PRESS;
+    const bool interactPressed = interactDown && !car.interactWasDown;
+    const bool lookingAtCar = IsLookingAtCar(camera, car);
+
+    if (interactPressed)
+    {
+        if (car.driving)
+        {
+            car.driving = false;
+            camera.Position = car.position - CarForward(car.yawDegrees) * 34.0f + glm::vec3(0.0f, 10.0f, 0.0f);
+            interaction.message = "SALISTE DEL COCHE";
+            interaction.messageUntil = currentFrame + 1.6f;
+        }
+        else if (lookingAtCar)
+        {
+            car.driving = true;
+            camera.flyMode = false;
+            camera.firstClick = true;
+            interaction.message = "CONDUCIENDO: WASD, SPACE FRENO, E SALIR";
+            interaction.messageUntil = currentFrame + 2.4f;
+        }
+    }
+    car.interactWasDown = interactDown;
+
+    if (!car.driving)
+    {
+        if (lookingAtCar)
+        {
+            interaction.targetName = "Coche";
+            interaction.message = "E  CONDUCIR COCHE";
+            interaction.messageUntil = currentFrame + 0.1f;
+        }
+        return;
+    }
+
+    float acceleration = 0.0f;
+    if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
+        acceleration += 95.0f;
+    if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS)
+        acceleration -= 75.0f;
+
+    car.speed += acceleration * deltaTime;
+    if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS)
+        car.speed = glm::mix(car.speed, 0.0f, glm::clamp(deltaTime * 7.5f, 0.0f, 1.0f));
+    else if (std::abs(acceleration) < 0.001f)
+        car.speed = glm::mix(car.speed, 0.0f, glm::clamp(deltaTime * 1.8f, 0.0f, 1.0f));
+
+    car.speed = glm::clamp(car.speed, -45.0f, 130.0f);
+
+    const float steerInput =
+        (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS ? 1.0f : 0.0f) -
+        (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS ? 1.0f : 0.0f);
+    const float steeringGrip = glm::smoothstep(4.0f, 40.0f, std::abs(car.speed));
+    car.yawDegrees += steerInput * steeringGrip * 82.0f * deltaTime * (car.speed >= 0.0f ? 1.0f : -1.0f);
+
+    glm::vec3 previousCarPosition = car.position;
+    car.position += CarForward(car.yawDegrees) * car.speed * deltaTime;
+
+    glm::vec3 snappedCarPosition;
+    if (cityModel.TrySnapToWalkableSurface(
+        car.position + glm::vec3(0.0f, 10.0f, 0.0f),
+        sceneModelTransform,
+        18.0f,
+        10.0f,
+        18.0f,
+        55.0f,
+        walkMaxSlopeDegrees,
+        snappedCarPosition))
+    {
+        car.position = snappedCarPosition - glm::vec3(0.0f, 10.0f, 0.0f);
+    }
+    else
+    {
+        car.position = previousCarPosition;
+        car.speed = 0.0f;
+    }
+
+    const glm::vec3 forward = CarForward(car.yawDegrees);
+    const glm::vec3 cameraTarget = car.position + glm::vec3(0.0f, 16.0f, 0.0f);
+    const glm::vec3 desiredCameraPosition = cameraTarget - forward * 52.0f + glm::vec3(0.0f, 24.0f, 0.0f);
+    camera.Position = glm::mix(camera.Position, desiredCameraPosition, glm::clamp(deltaTime * 8.0f, 0.0f, 1.0f));
+    camera.Orientation = glm::normalize(cameraTarget - camera.Position);
 }
 
 int GetEnvironmentMenuRowAt(double mouseX, double mouseY)
@@ -207,6 +391,48 @@ std::string FormatTimeOfDay(float timeOfDay)
     std::ostringstream stream;
     stream << std::setfill('0') << std::setw(2) << hours << ":" << std::setw(2) << minutes;
     return stream.str();
+}
+
+bool FileExists(const char* path)
+{
+    std::error_code error;
+    return fs::exists(path, error);
+}
+
+void LoadApplicationFont(ImGuiIO& imguiIo)
+{
+    const char* fontPaths[] =
+    {
+        "Texturas/Fonts/calibri.ttf",
+        "ExplorerMaps/Texturas/Fonts/calibri.ttf",
+        "../ExplorerMaps/Texturas/Fonts/calibri.ttf"
+    };
+
+    for (const char* fontPath : fontPaths)
+    {
+        if (FileExists(fontPath))
+        {
+            imguiIo.Fonts->AddFontFromFileTTF(fontPath, 18.0f);
+            return;
+        }
+    }
+
+    imguiIo.Fonts->AddFontDefault();
+}
+
+void SetWorkingDirectoryFromExecutable(const char* executablePath)
+{
+    if (executablePath == nullptr || executablePath[0] == '\0')
+        return;
+
+    std::error_code error;
+    const fs::path executable = fs::absolute(executablePath, error);
+    if (error)
+        return;
+
+    const fs::path executableDirectory = executable.parent_path();
+    if (!executableDirectory.empty())
+        fs::current_path(executableDirectory, error);
 }
 
 EnvironmentMode ResolveSkyboxMode(EnvironmentMode environmentMode, bool isDay)
@@ -365,7 +591,7 @@ std::string BuildEnvironmentTitle(const EnvironmentMenuState& menu, EnvironmentM
         const char* option0 = menu.selection == 0 ? "> DIA" : "  DIA";
         const char* option1 = menu.selection == 1 ? "> NOCHE" : "  NOCHE";
         const char* option2 = menu.selection == 2 ? "> AUTO" : "  AUTO";
-        const char* option3 = menu.selection == 3 ? "> SALIR" : "  SALIR";
+        const char* option3 = menu.selection == 3 ? "> INICIO" : "  INICIO";
         title << "MENU AMBIENTE | " << option0 << " | " << option1 << " | " << option2 << " | " << option3
               << " | Enter: aplicar | Esc: cerrar";
     }
@@ -442,6 +668,169 @@ void AddOverlayText(std::vector<OverlayVertex>& vertices, const std::string& tex
     }
 }
 
+void AddOverlayLineRect(std::vector<OverlayVertex>& vertices, float x0, float y0, float x1, float y1, float thickness, const glm::vec4& color)
+{
+    if (std::abs(x1 - x0) >= std::abs(y1 - y0))
+    {
+        const float x = std::min(x0, x1);
+        AddOverlayRect(vertices, x, y0 - thickness * 0.5f, std::abs(x1 - x0), thickness, color);
+    }
+    else
+    {
+        const float y = std::min(y0, y1);
+        AddOverlayRect(vertices, x0 - thickness * 0.5f, y, thickness, std::abs(y1 - y0), color);
+    }
+}
+
+float IntersectInteractionSphere(const glm::vec3& rayOrigin, const glm::vec3& rayDirection, const glm::vec3& center, float radius)
+{
+    const glm::vec3 offset = rayOrigin - center;
+    const float b = 2.0f * glm::dot(offset, rayDirection);
+    const float c = glm::dot(offset, offset) - radius * radius;
+    const float discriminant = b * b - 4.0f * c;
+    if (discriminant < 0.0f)
+        return FLT_MAX;
+
+    const float root = std::sqrt(discriminant);
+    const float t0 = (-b - root) * 0.5f;
+    const float t1 = (-b + root) * 0.5f;
+    if (t0 > 0.0f)
+        return t0;
+    return t1 > 0.0f ? t1 : FLT_MAX;
+}
+
+std::string SelectionDisplayName(const EditorSceneData& sceneData, const SceneSelection& selection)
+{
+    if (selection.type == SceneObjectType::Light && selection.index >= 0 && selection.index < static_cast<int>(sceneData.lights.size()))
+        return sceneData.lights[selection.index].name;
+    if (selection.type == SceneObjectType::Helper && selection.index >= 0 && selection.index < static_cast<int>(sceneData.helpers.size()))
+        return sceneData.helpers[selection.index].name;
+    if (selection.type == SceneObjectType::Entity && selection.index >= 0 && selection.index < static_cast<int>(sceneData.entities.size()))
+        return sceneData.entities[selection.index].name;
+    return "";
+}
+
+void UpdateInteractionState(GLFWwindow* window, const Camera& camera, const EditorSceneData& sceneData, InteractionState& interaction, float currentFrame)
+{
+    const float maxInteractDistance = 180.0f;
+    const glm::vec3 rayOrigin = camera.Position;
+    const glm::vec3 rayDirection = glm::normalize(camera.Orientation);
+    SceneSelection bestSelection;
+    float bestDistance = maxInteractDistance;
+
+    for (int i = 0; i < static_cast<int>(sceneData.lights.size()); ++i)
+    {
+        const Light& light = sceneData.lights[i];
+        const float radius = std::max(light.helperSize, 10.0f);
+        const float distance = IntersectInteractionSphere(rayOrigin, rayDirection, light.position, radius);
+        if (distance < bestDistance)
+        {
+            bestDistance = distance;
+            bestSelection.type = SceneObjectType::Light;
+            bestSelection.index = i;
+        }
+    }
+
+    for (int i = 0; i < static_cast<int>(sceneData.helpers.size()); ++i)
+    {
+        const Helper& helper = sceneData.helpers[i];
+        const float radius = std::max(MaxComponent(helper.scale), 10.0f);
+        const float distance = IntersectInteractionSphere(rayOrigin, rayDirection, helper.position, radius);
+        if (distance < bestDistance)
+        {
+            bestDistance = distance;
+            bestSelection.type = SceneObjectType::Helper;
+            bestSelection.index = i;
+        }
+    }
+
+    interaction.target = bestSelection;
+    interaction.targetName = SelectionDisplayName(sceneData, bestSelection);
+
+    const bool interactDown = glfwGetKey(window, GLFW_KEY_E) == GLFW_PRESS;
+    if (interactDown && !interaction.interactWasDown && interaction.target.IsValid())
+    {
+        interaction.message = "INTERACCION: " + interaction.targetName;
+        interaction.messageUntil = currentFrame + 2.0f;
+    }
+    interaction.interactWasDown = interactDown;
+}
+
+void UpdateWalkAnimation(WalkAnimationState& walkAnimation, bool walking, float deltaTime)
+{
+    const float targetAmount = walking ? 1.0f : 0.0f;
+    walkAnimation.amount = glm::mix(walkAnimation.amount, targetAmount, glm::clamp(deltaTime * 8.0f, 0.0f, 1.0f));
+    if (walkAnimation.amount > 0.01f)
+        walkAnimation.phase += deltaTime * 8.0f;
+}
+
+glm::vec3 ComputeWalkBobOffset(const Camera& camera, const WalkAnimationState& walkAnimation)
+{
+    if (walkAnimation.amount <= 0.001f)
+        return glm::vec3(0.0f);
+
+    glm::vec3 right = glm::cross(camera.Orientation, camera.Up);
+    if (glm::length(right) < 0.0001f)
+        right = glm::vec3(1.0f, 0.0f, 0.0f);
+    right = glm::normalize(right);
+
+    const float vertical = std::abs(std::sin(walkAnimation.phase)) * 0.55f * walkAnimation.amount;
+    const float horizontal = std::sin(walkAnimation.phase * 0.5f) * 0.22f * walkAnimation.amount;
+    return camera.Up * vertical + right * horizontal;
+}
+
+void DrawPlayerHud(const InteractionState& interaction, const WalkAnimationState& walkAnimation, float currentFrame, Shader& overlayShader, GLuint overlayVAO, GLuint overlayVBO)
+{
+    std::vector<OverlayVertex> vertices;
+    const float bobX = std::sin(walkAnimation.phase * 0.5f) * 7.0f * walkAnimation.amount;
+    const float bobY = std::abs(std::sin(walkAnimation.phase)) * 8.0f * walkAnimation.amount;
+    const float cx = width * 0.5f + bobX;
+    const float cy = height * 0.5f + bobY;
+
+    const bool hasTarget = interaction.target.IsValid();
+    const glm::vec4 reticleColor = hasTarget
+        ? glm::vec4(1.0f, 0.82f, 0.24f, 0.95f)
+        : glm::vec4(0.86f, 0.92f, 0.96f, 0.78f);
+    const glm::vec4 shadow(0.0f, 0.0f, 0.0f, 0.35f);
+
+    AddOverlayRect(vertices, cx - 3.0f, cy - 3.0f, 6.0f, 6.0f, shadow);
+    AddOverlayRect(vertices, cx - 2.0f, cy - 2.0f, 4.0f, 4.0f, reticleColor);
+    AddOverlayLineRect(vertices, cx - 22.0f, cy, cx - 8.0f, cy, 2.0f, reticleColor);
+    AddOverlayLineRect(vertices, cx + 8.0f, cy, cx + 22.0f, cy, 2.0f, reticleColor);
+    AddOverlayLineRect(vertices, cx, cy - 22.0f, cx, cy - 8.0f, 2.0f, reticleColor);
+    AddOverlayLineRect(vertices, cx, cy + 8.0f, cx, cy + 22.0f, 2.0f, reticleColor);
+
+    if (walkAnimation.amount > 0.05f)
+    {
+        const float stride = std::abs(std::sin(walkAnimation.phase)) * walkAnimation.amount;
+        AddOverlayLineRect(vertices, cx - 70.0f + stride * 18.0f, cy + 86.0f, cx - 32.0f, cy + 34.0f, 5.0f, glm::vec4(0.02f, 0.02f, 0.025f, 0.22f));
+        AddOverlayLineRect(vertices, cx + 70.0f - stride * 18.0f, cy + 86.0f, cx + 32.0f, cy + 34.0f, 5.0f, glm::vec4(0.02f, 0.02f, 0.025f, 0.22f));
+    }
+
+    if (hasTarget)
+    {
+        AddOverlayText(vertices, "E  INTERACTUAR", cx - 118.0f, cy + 54.0f, 0.62f, reticleColor);
+        AddOverlayText(vertices, interaction.targetName, cx - 88.0f, cy + 82.0f, 0.52f, glm::vec4(0.78f, 0.84f, 0.90f, 0.88f));
+    }
+
+    if (!interaction.message.empty() && currentFrame < interaction.messageUntil)
+        AddOverlayText(vertices, interaction.message, 52.0f, height - 84.0f, 0.72f, glm::vec4(1.0f, 0.86f, 0.34f, 0.94f));
+
+    glDisable(GL_DEPTH_TEST);
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+    overlayShader.Activate();
+    glBindVertexArray(overlayVAO);
+    glBindBuffer(GL_ARRAY_BUFFER, overlayVBO);
+    glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(OverlayVertex), vertices.data(), GL_DYNAMIC_DRAW);
+    glDrawArrays(GL_TRIANGLES, 0, static_cast<GLsizei>(vertices.size()));
+    glBindVertexArray(0);
+
+    glDisable(GL_BLEND);
+    glEnable(GL_DEPTH_TEST);
+}
+
 void DrawEnvironmentMenu(const EnvironmentMenuState& menu, EnvironmentMode mode, float manualTimeOfDay, Shader& overlayShader, GLuint overlayVAO, GLuint overlayVBO)
 {
     std::vector<OverlayVertex> vertices;
@@ -469,7 +858,7 @@ void DrawEnvironmentMenu(const EnvironmentMenuState& menu, EnvironmentMode mode,
         AddOverlayText(vertices, "AMBIENTE", panelX + 76.0f, panelY + 58.0f, 1.7f, textMain);
         AddOverlayText(vertices, "SELECCIONA SKYBOX", panelX + 76.0f, panelY + 112.0f, 0.92f, textMuted);
 
-        const char* labels[kEnvironmentMenuItemCount] = { "DIA", "NOCHE", "AUTO", "SALIR" };
+        const char* labels[kEnvironmentMenuItemCount] = { "DIA", "NOCHE", "AUTO", "SALIR AL INICIO" };
         for (int i = 0; i < kEnvironmentMenuItemCount; ++i)
         {
             const float rowX = panelX + 76.0f;
@@ -587,6 +976,165 @@ void DrawSkyControlPanel(const SkyPanelState& panel, EnvironmentMode mode, float
     glEnable(GL_DEPTH_TEST);
 }
 
+void DrawMainMenuOverlay(const MainMenuState& menu, Shader& overlayShader, GLuint overlayVAO, GLuint overlayVBO)
+{
+    std::vector<OverlayVertex> vertices;
+    const glm::vec4 bgTop(0.015f, 0.020f, 0.030f, 1.0f);
+    const glm::vec4 bgBottom(0.030f, 0.038f, 0.050f, 1.0f);
+    const glm::vec4 panelColor(0.020f, 0.026f, 0.038f, 0.94f);
+    const glm::vec4 accent(0.95f, 0.74f, 0.24f, 1.0f);
+    const glm::vec4 textMain(0.94f, 0.92f, 0.84f, 1.0f);
+    const glm::vec4 textMuted(0.56f, 0.64f, 0.74f, 1.0f);
+    const glm::vec4 startButton(0.10f, 0.25f, 0.36f, 0.98f);
+    const glm::vec4 exitButton(0.28f, 0.09f, 0.09f, 0.98f);
+    const glm::vec4 selectedButton(0.95f, 0.74f, 0.24f, 0.98f);
+
+    AddOverlayRect(vertices, 0.0f, 0.0f, static_cast<float>(width), static_cast<float>(height), bgTop);
+    AddOverlayRect(vertices, 0.0f, height * 0.52f, static_cast<float>(width), height * 0.48f, bgBottom);
+
+    const float panelX = 700.0f;
+    const float panelY = 300.0f;
+    const float panelW = 520.0f;
+    const float panelH = 430.0f;
+    AddOverlayRect(vertices, panelX + 12.0f, panelY + 14.0f, panelW, panelH, glm::vec4(0.0f, 0.0f, 0.0f, 0.34f));
+    AddOverlayRect(vertices, panelX, panelY, panelW, panelH, panelColor);
+    AddOverlayRect(vertices, panelX, panelY, panelW, 6.0f, accent);
+
+    AddOverlayText(vertices, "EXPLORERMAN", panelX + 64.0f, panelY + 74.0f, 1.85f, accent);
+    AddOverlayText(vertices, "MENU DE INICIO", panelX + 66.0f, panelY + 132.0f, 0.82f, textMuted);
+
+    AddOverlayRect(vertices, panelX + 64.0f, panelY + 190.0f, panelW - 128.0f, 58.0f, menu.selection == 0 ? selectedButton : startButton);
+    AddOverlayRect(vertices, panelX + 64.0f, panelY + 270.0f, panelW - 128.0f, 58.0f, menu.selection == 1 ? selectedButton : exitButton);
+    AddOverlayText(vertices, "INICIAR MUNDO", panelX + 128.0f, panelY + 211.0f, 0.96f, menu.selection == 0 ? glm::vec4(0.04f, 0.05f, 0.07f, 1.0f) : textMain);
+    AddOverlayText(vertices, "CERRAR PROGRAMA", panelX + 112.0f, panelY + 291.0f, 0.90f, menu.selection == 1 ? glm::vec4(0.04f, 0.05f, 0.07f, 1.0f) : glm::vec4(1.0f, 0.86f, 0.82f, 1.0f));
+    AddOverlayText(vertices, "ExplorerMan", panelX + 66.0f, panelY + 370.0f, 0.64f, textMuted);
+
+    glDisable(GL_DEPTH_TEST);
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+    overlayShader.Activate();
+    glBindVertexArray(overlayVAO);
+    glBindBuffer(GL_ARRAY_BUFFER, overlayVBO);
+    glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(OverlayVertex), vertices.data(), GL_DYNAMIC_DRAW);
+    glDrawArrays(GL_TRIANGLES, 0, static_cast<GLsizei>(vertices.size()));
+    glBindVertexArray(0);
+
+    glDisable(GL_BLEND);
+    glEnable(GL_DEPTH_TEST);
+}
+
+void DrawLoadingScreenOverlay(Shader& overlayShader, GLuint overlayVAO, GLuint overlayVBO)
+{
+    std::vector<OverlayVertex> vertices;
+    const float pulse = (std::sin(static_cast<float>(glfwGetTime()) * 5.0f) + 1.0f) * 0.5f;
+    const float barW = 360.0f;
+    const float progressW = barW * (0.35f + pulse * 0.55f);
+    const float centerX = width * 0.5f;
+    const float centerY = height * 0.5f;
+
+    AddOverlayRect(vertices, 0.0f, 0.0f, static_cast<float>(width), static_cast<float>(height), glm::vec4(0.015f, 0.018f, 0.026f, 1.0f));
+    AddOverlayText(vertices, "CARGANDO EXPLORERMAN", centerX - 260.0f, centerY - 80.0f, 1.25f, glm::vec4(1.0f, 0.86f, 0.34f, 1.0f));
+    AddOverlayRect(vertices, centerX - barW * 0.5f, centerY - 12.0f, barW, 18.0f, glm::vec4(0.08f, 0.10f, 0.14f, 1.0f));
+    AddOverlayRect(vertices, centerX - barW * 0.5f, centerY - 12.0f, progressW, 18.0f, glm::vec4(0.14f, 0.40f, 0.56f, 1.0f));
+    AddOverlayText(vertices, "PREPARANDO EL MUNDO...", centerX - 170.0f, centerY + 44.0f, 0.72f, glm::vec4(0.64f, 0.71f, 0.82f, 1.0f));
+
+    glDisable(GL_DEPTH_TEST);
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+    overlayShader.Activate();
+    glBindVertexArray(overlayVAO);
+    glBindBuffer(GL_ARRAY_BUFFER, overlayVBO);
+    glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(OverlayVertex), vertices.data(), GL_DYNAMIC_DRAW);
+    glDrawArrays(GL_TRIANGLES, 0, static_cast<GLsizei>(vertices.size()));
+    glBindVertexArray(0);
+
+    glDisable(GL_BLEND);
+    glEnable(GL_DEPTH_TEST);
+}
+
+MainMenuAction HandleMainMenuInput(GLFWwindow* window, MainMenuState& menu)
+{
+    const bool mouseDown = glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS;
+    const bool upDown = glfwGetKey(window, GLFW_KEY_UP) == GLFW_PRESS || glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS;
+    const bool downDown = glfwGetKey(window, GLFW_KEY_DOWN) == GLFW_PRESS || glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS;
+    const bool enterDown = glfwGetKey(window, GLFW_KEY_ENTER) == GLFW_PRESS || glfwGetKey(window, GLFW_KEY_KP_ENTER) == GLFW_PRESS;
+    bool gamepadUpDown = false;
+    bool gamepadDownDown = false;
+    bool gamepadAcceptDown = false;
+    bool gamepadCancelDown = false;
+    MainMenuAction action = MainMenuAction::None;
+
+    if (glfwJoystickIsGamepad(GLFW_JOYSTICK_1))
+    {
+        GLFWgamepadstate state;
+        if (glfwGetGamepadState(GLFW_JOYSTICK_1, &state))
+        {
+            const float stickDeadzone = 0.55f;
+            gamepadUpDown = state.buttons[GLFW_GAMEPAD_BUTTON_DPAD_UP] == GLFW_PRESS ||
+                state.axes[GLFW_GAMEPAD_AXIS_LEFT_Y] < -stickDeadzone;
+            gamepadDownDown = state.buttons[GLFW_GAMEPAD_BUTTON_DPAD_DOWN] == GLFW_PRESS ||
+                state.axes[GLFW_GAMEPAD_AXIS_LEFT_Y] > stickDeadzone;
+            gamepadAcceptDown = state.buttons[GLFW_GAMEPAD_BUTTON_A] == GLFW_PRESS;
+            gamepadCancelDown = state.buttons[GLFW_GAMEPAD_BUTTON_B] == GLFW_PRESS;
+        }
+    }
+
+    if ((upDown && !menu.upWasDown) || (gamepadUpDown && !menu.gamepadUpWasDown))
+        menu.selection = (menu.selection + 1) % 2;
+    if ((downDown && !menu.downWasDown) || (gamepadDownDown && !menu.gamepadDownWasDown))
+        menu.selection = (menu.selection + 1) % 2;
+
+    if ((enterDown && !menu.enterWasDown) || (gamepadAcceptDown && !menu.gamepadAcceptWasDown))
+        action = menu.selection == 0 ? MainMenuAction::StartWorld : MainMenuAction::Quit;
+    if (gamepadCancelDown && !menu.gamepadCancelWasDown)
+        action = MainMenuAction::Quit;
+
+    if (mouseDown && !menu.mouseWasDown)
+    {
+        double mouseX = 0.0;
+        double mouseY = 0.0;
+        glfwGetCursorPos(window, &mouseX, &mouseY);
+
+        const float buttonX = 764.0f;
+        const float buttonW = 392.0f;
+        if (IsInsideRect(mouseX, mouseY, buttonX, 490.0f, buttonW, 58.0f))
+        {
+            menu.selection = 0;
+            action = MainMenuAction::StartWorld;
+        }
+        else if (IsInsideRect(mouseX, mouseY, buttonX, 570.0f, buttonW, 58.0f))
+        {
+            menu.selection = 1;
+            action = MainMenuAction::Quit;
+        }
+    }
+
+    menu.mouseWasDown = mouseDown;
+    menu.upWasDown = upDown;
+    menu.downWasDown = downDown;
+    menu.enterWasDown = enterDown;
+    menu.gamepadUpWasDown = gamepadUpDown;
+    menu.gamepadDownWasDown = gamepadDownDown;
+    menu.gamepadAcceptWasDown = gamepadAcceptDown;
+    menu.gamepadCancelWasDown = gamepadCancelDown;
+    return action;
+}
+
+void RunLoadingOverlay(GLFWwindow* window, Shader& overlayShader, GLuint overlayVAO, GLuint overlayVBO, float seconds)
+{
+    const float endTime = static_cast<float>(glfwGetTime()) + seconds;
+    while (!glfwWindowShouldClose(window) && static_cast<float>(glfwGetTime()) < endTime)
+    {
+        glClearColor(0.015f, 0.018f, 0.026f, 1.0f);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        DrawLoadingScreenOverlay(overlayShader, overlayVAO, overlayVBO);
+        glfwSwapBuffers(window);
+        glfwPollEvents();
+    }
+}
+
 void SetupSkyPanelStyle()
 {
     ImGuiStyle& style = ImGui::GetStyle();
@@ -618,6 +1166,111 @@ void SetupSkyPanelStyle()
     colors[ImGuiCol_Text] = ImVec4(0.93f, 0.94f, 0.98f, 1.0f);
     colors[ImGuiCol_TextDisabled] = ImVec4(0.58f, 0.64f, 0.74f, 1.0f);
     colors[ImGuiCol_CheckMark] = ImVec4(0.95f, 0.77f, 0.24f, 1.0f);
+}
+
+MainMenuAction DrawMainMenuImGui()
+{
+    MainMenuAction action = MainMenuAction::None;
+    ImGuiIO& io = ImGui::GetIO();
+    ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f), ImGuiCond_Always);
+    ImGui::SetNextWindowSize(io.DisplaySize, ImGuiCond_Always);
+
+    ImGuiWindowFlags flags =
+        ImGuiWindowFlags_NoDecoration |
+        ImGuiWindowFlags_NoMove |
+        ImGuiWindowFlags_NoResize |
+        ImGuiWindowFlags_NoSavedSettings |
+        ImGuiWindowFlags_NoBringToFrontOnFocus;
+
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
+    ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.02f, 0.025f, 0.035f, 1.0f));
+    ImGui::Begin("ExplorerMan Inicio", nullptr, flags);
+    ImGui::PopStyleColor();
+    ImGui::PopStyleVar();
+
+    ImDrawList* drawList = ImGui::GetWindowDrawList();
+    const ImVec2 size = io.DisplaySize;
+    drawList->AddRectFilled(ImVec2(0.0f, 0.0f), size, IM_COL32(8, 13, 20, 255));
+    drawList->AddRectFilledMultiColor(
+        ImVec2(0.0f, 0.0f),
+        size,
+        IM_COL32(12, 20, 32, 255),
+        IM_COL32(25, 35, 44, 255),
+        IM_COL32(5, 8, 14, 255),
+        IM_COL32(14, 19, 27, 255));
+
+    const float panelW = 520.0f;
+    const float panelH = 430.0f;
+    const ImVec2 panelPos((size.x - panelW) * 0.5f, (size.y - panelH) * 0.5f);
+    drawList->AddRectFilled(
+        ImVec2(panelPos.x + 12.0f, panelPos.y + 14.0f),
+        ImVec2(panelPos.x + panelW + 12.0f, panelPos.y + panelH + 14.0f),
+        IM_COL32(0, 0, 0, 88),
+        6.0f);
+    drawList->AddRectFilled(panelPos, ImVec2(panelPos.x + panelW, panelPos.y + panelH), IM_COL32(13, 18, 27, 238), 6.0f);
+    drawList->AddRectFilled(panelPos, ImVec2(panelPos.x + panelW, panelPos.y + 6.0f), IM_COL32(238, 188, 63, 255), 6.0f);
+
+    ImGui::SetCursorScreenPos(ImVec2(panelPos.x + 64.0f, panelPos.y + 62.0f));
+    ImGui::TextColored(ImVec4(1.0f, 0.86f, 0.34f, 1.0f), "EXPLORERMAN");
+    ImGui::SetCursorScreenPos(ImVec2(panelPos.x + 66.0f, panelPos.y + 112.0f));
+    ImGui::TextColored(ImVec4(0.66f, 0.73f, 0.82f, 1.0f), "Menu de inicio");
+
+    ImGui::SetCursorScreenPos(ImVec2(panelPos.x + 64.0f, panelPos.y + 180.0f));
+    ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 3.0f);
+    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(18.0f, 14.0f));
+    ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.15f, 0.30f, 0.42f, 1.0f));
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.20f, 0.40f, 0.56f, 1.0f));
+    ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.27f, 0.50f, 0.68f, 1.0f));
+    if (ImGui::Button("Iniciar mundo", ImVec2(panelW - 128.0f, 58.0f)))
+        action = MainMenuAction::StartWorld;
+    ImGui::PopStyleColor(3);
+
+    ImGui::SetCursorScreenPos(ImVec2(panelPos.x + 64.0f, panelPos.y + 260.0f));
+    ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.34f, 0.12f, 0.12f, 1.0f));
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.48f, 0.18f, 0.16f, 1.0f));
+    ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.62f, 0.24f, 0.20f, 1.0f));
+    if (ImGui::Button("Cerrar programa", ImVec2(panelW - 128.0f, 58.0f)))
+        action = MainMenuAction::Quit;
+    ImGui::PopStyleColor(3);
+    ImGui::PopStyleVar(2);
+
+    ImGui::SetCursorScreenPos(ImVec2(panelPos.x + 66.0f, panelPos.y + 362.0f));
+    ImGui::TextColored(ImVec4(0.50f, 0.57f, 0.68f, 1.0f), "ExplorerMan");
+
+    ImGui::End();
+    return action;
+}
+
+void DrawLoadingScreenImGui()
+{
+    ImGuiIO& io = ImGui::GetIO();
+    ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f), ImGuiCond_Always);
+    ImGui::SetNextWindowSize(io.DisplaySize, ImGuiCond_Always);
+
+    ImGuiWindowFlags flags =
+        ImGuiWindowFlags_NoDecoration |
+        ImGuiWindowFlags_NoMove |
+        ImGuiWindowFlags_NoResize |
+        ImGuiWindowFlags_NoSavedSettings;
+
+    ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.015f, 0.018f, 0.026f, 1.0f));
+    ImGui::Begin("ExplorerMan Cargando", nullptr, flags);
+    ImGui::PopStyleColor();
+
+    const ImVec2 size = io.DisplaySize;
+    const float centerX = size.x * 0.5f;
+    const float centerY = size.y * 0.5f;
+    const float pulse = (std::sin(static_cast<float>(glfwGetTime()) * 5.0f) + 1.0f) * 0.5f;
+    const float progress = 0.35f + pulse * 0.55f;
+
+    ImGui::SetCursorScreenPos(ImVec2(centerX - 180.0f, centerY - 64.0f));
+    ImGui::TextColored(ImVec4(1.0f, 0.86f, 0.34f, 1.0f), "CARGANDO EXPLORERMAN");
+    ImGui::SetCursorScreenPos(ImVec2(centerX - 180.0f, centerY - 10.0f));
+    ImGui::ProgressBar(progress, ImVec2(360.0f, 18.0f), "");
+    ImGui::SetCursorScreenPos(ImVec2(centerX - 110.0f, centerY + 34.0f));
+    ImGui::TextColored(ImVec4(0.64f, 0.71f, 0.82f, 1.0f), "Preparando el mundo...");
+
+    ImGui::End();
 }
 
 void DrawSkyControlImGui(SkyPanelState& panel, EnvironmentMode& mode, float& manualTimeOfDay, SkyCloudSettings& cloudSettings)
@@ -997,14 +1650,17 @@ void DrawInteriorLightCubes(const std::vector<Light>& lights, Shader& lightShade
     glBindVertexArray(0);
 }
 
-int main()
+int main(int argc, char** argv)
 {
+    if (argc > 0)
+        SetWorkingDirectoryFromExecutable(argv[0]);
+
     glfwInit();
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 
-    GLFWwindow* window = glfwCreateWindow(width, height, "Proyecto", NULL, NULL);
+    GLFWwindow* window = glfwCreateWindow(width, height, "ExplorerMan", NULL, NULL);
     if (window == NULL)
     {
         std::cout << "Failed to create GLFW window" << std::endl;
@@ -1017,28 +1673,7 @@ int main()
     gladLoadGL();
     glViewport(0, 0, width, height);
 
-    IMGUI_CHECKVERSION();
-    ImGui::CreateContext();
-    SetupSkyPanelStyle();
-    ImGuiIO& imguiIo = ImGui::GetIO();
-    imguiIo.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
-    imguiIo.Fonts->AddFontFromFileTTF("Texturas/Fonts/calibri.ttf", 18.0f);
-    ImGui_ImplGlfw_InitForOpenGL(window, true);
-    ImGui_ImplOpenGL3_Init("#version 330");
-
-    Shader shaderProgram("Shaders/default.vert", "Shaders/default.frag");
-    Shader lightShader("Shaders/light.vert", "Shaders/light.frag");
-    Shader sphereShader("Shaders/sphere.vert", "Shaders/sphere.frag");
     Shader overlayShader("Shaders/menu.vert", "Shaders/menu.frag");
-    Texture sunTexture("Texturas/sun.jpg", "diffuse", 0);
-    Texture moonTexture("Texturas/moon.jpg", "diffuse", 0);
-    sphereShader.Activate();
-    sunTexture.texUnit(sphereShader, "sphereTexture", 0);
-
-    GLuint sunVAO, sunVBO, sunEBO;
-    GLuint moonVAO, moonVBO, moonEBO;
-    GLuint lampGlowVAO, lampGlowVBO, lampGlowEBO;
-    GLuint lightCubeVAO, lightCubeVBO;
     GLuint overlayVAO, overlayVBO;
     glGenVertexArrays(1, &overlayVAO);
     glGenBuffers(1, &overlayVBO);
@@ -1049,6 +1684,57 @@ int main()
     glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, sizeof(OverlayVertex), (void*)(2 * sizeof(float)));
     glEnableVertexAttribArray(1);
     glBindVertexArray(0);
+
+    IMGUI_CHECKVERSION();
+    ImGui::CreateContext();
+    SetupSkyPanelStyle();
+    ImGuiIO& imguiIo = ImGui::GetIO();
+    imguiIo.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+    LoadApplicationFont(imguiIo);
+    ImGui_ImplGlfw_InitForOpenGL(window, true);
+    ImGui_ImplOpenGL3_Init("#version 330");
+
+    glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+    MainMenuState mainMenu;
+    while (!glfwWindowShouldClose(window))
+    {
+        const MainMenuAction action = HandleMainMenuInput(window, mainMenu);
+        if (action == MainMenuAction::StartWorld)
+            break;
+        if (action == MainMenuAction::Quit)
+            glfwSetWindowShouldClose(window, true);
+
+        glClearColor(0.02f, 0.025f, 0.035f, 1.0f);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        DrawMainMenuOverlay(mainMenu, overlayShader, overlayVAO, overlayVBO);
+        glfwSwapBuffers(window);
+        glfwPollEvents();
+    }
+
+    if (glfwWindowShouldClose(window))
+    {
+        ImGui_ImplOpenGL3_Shutdown();
+        ImGui_ImplGlfw_Shutdown();
+        ImGui::DestroyContext();
+        glfwDestroyWindow(window);
+        glfwTerminate();
+        return 0;
+    }
+
+    RunLoadingOverlay(window, overlayShader, overlayVAO, overlayVBO, 0.85f);
+
+    Shader shaderProgram("Shaders/default.vert", "Shaders/default.frag");
+    Shader lightShader("Shaders/light.vert", "Shaders/light.frag");
+    Shader sphereShader("Shaders/sphere.vert", "Shaders/sphere.frag");
+    Texture sunTexture("Texturas/sun.jpg", "diffuse", 0);
+    Texture moonTexture("Texturas/moon.jpg", "diffuse", 0);
+    sphereShader.Activate();
+    sunTexture.texUnit(sphereShader, "sphereTexture", 0);
+
+    GLuint sunVAO, sunVBO, sunEBO;
+    GLuint moonVAO, moonVBO, moonEBO;
+    GLuint lampGlowVAO, lampGlowVBO, lampGlowEBO;
+    GLuint lightCubeVAO, lightCubeVBO;
     createSphere(sunVAO, sunVBO, sunEBO, 48, SUN_SIZE);
     createSphere(moonVAO, moonVBO, moonEBO, 36, MOON_SIZE);
     createSphere(lampGlowVAO, lampGlowVBO, lampGlowEBO, lampGlowSectors, lampGlowSize);
@@ -1082,6 +1768,7 @@ int main()
         ? sceneData.entities.front().assetPath
         : std::string("modelos/city2.glb");
     Model model(activeModelPath.c_str());
+    Model carModel("modelos/Coches/Car_1/source/Car1.gltf");
     Skybox skybox(
         GetSkyboxFacePaths(EnvironmentMode::Day),
         GetSkyboxFacePaths(EnvironmentMode::Night),
@@ -1128,6 +1815,7 @@ int main()
     glm::vec3 skySunDirection(0.0f, 1.0f, 0.0f);
     ColliderManager colliderManager;
     CollisionSystem collisionSystem;
+    DrivableCarState car;
 
     Editor editor;
     EditorConfig editorConfig;
@@ -1166,6 +1854,7 @@ int main()
         {
             model.Draw(shaderProgram, previewCamera, BuildSceneModelTransform(entity, baseModelTransform));
         }
+        carModel.Draw(shaderProgram, previewCamera, BuildCarTransform(car));
 
         DrawInteriorLightCubes(sceneData.lights, lightShader, previewCamera, lightCubeVAO, skySunDirection);
     };
@@ -1206,6 +1895,7 @@ int main()
         {
             model.Draw(shaderProgram, previewCamera, BuildSceneModelTransform(entity, baseModelTransform));
         }
+        carModel.Draw(shaderProgram, previewCamera, BuildCarTransform(car));
 
         DrawInteriorLightCubes(sceneData.lights, lightShader, previewCamera, lightCubeVAO, skySunDirection);
     };
@@ -1232,6 +1922,24 @@ int main()
     EnvironmentMode environmentMode = EnvironmentMode::Auto;
     EnvironmentMenuState environmentMenu;
     SkyPanelState skyPanel;
+    InteractionState interaction;
+    WalkAnimationState walkAnimation;
+    glm::vec3 snappedCarStart;
+    if (model.TrySnapToWalkableSurface(
+        car.position + glm::vec3(0.0f, 10.0f, 0.0f),
+        BuildSceneModelTransform(sceneData.entities.front(), baseModelTransform),
+        18.0f,
+        10.0f,
+        18.0f,
+        55.0f,
+        walkMaxSlopeDegrees,
+        snappedCarStart))
+    {
+        car.position = snappedCarStart - glm::vec3(0.0f, 10.0f, 0.0f);
+    }
+    AppScreen appScreen = AppScreen::World;
+    LoadingDestination loadingDestination = LoadingDestination::World;
+    float loadingScreenUntil = 0.0f;
     bool menuCursorVisible = false;
     while (!glfwWindowShouldClose(window))
     {
@@ -1239,9 +1947,67 @@ int main()
         float deltaTime = currentFrame - lastFrame;
         lastFrame = currentFrame;
 
+        if (appScreen == AppScreen::MainMenu)
+        {
+            glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+            menuCursorVisible = true;
+            camera.firstClick = true;
+            glfwSetWindowTitle(window, "ExplorerMan");
+
+            const MainMenuAction action = HandleMainMenuInput(window, mainMenu);
+            if (action == MainMenuAction::StartWorld)
+            {
+                appScreen = AppScreen::Loading;
+                loadingDestination = LoadingDestination::World;
+                loadingScreenUntil = currentFrame + 0.85f;
+                mainMenu.mouseWasDown = true;
+            }
+            else if (action == MainMenuAction::Quit)
+            {
+                glfwSetWindowShouldClose(window, true);
+            }
+
+            glClearColor(0.02f, 0.025f, 0.035f, 1.0f);
+            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+            DrawMainMenuOverlay(mainMenu, overlayShader, overlayVAO, overlayVBO);
+            glfwSwapBuffers(window);
+            glfwPollEvents();
+            continue;
+        }
+
+        if (appScreen == AppScreen::Loading)
+        {
+            if (currentFrame >= loadingScreenUntil)
+            {
+                if (loadingDestination == LoadingDestination::World)
+                {
+                    appScreen = AppScreen::World;
+                    glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+                    menuCursorVisible = false;
+                    camera.firstClick = true;
+                }
+                else
+                {
+                    appScreen = AppScreen::MainMenu;
+                    glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+                    menuCursorVisible = true;
+                    camera.firstClick = true;
+                    mainMenu.mouseWasDown = glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS;
+                }
+            }
+
+            glClearColor(0.015f, 0.018f, 0.026f, 1.0f);
+            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+            DrawLoadingScreenOverlay(overlayShader, overlayVAO, overlayVBO);
+            glfwSwapBuffers(window);
+            glfwPollEvents();
+            continue;
+        }
+
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
+
         editor.Update(deltaTime);
         collisionEditor.Update(deltaTime);
 
@@ -1253,7 +2019,16 @@ int main()
         }
         if (shouldExit)
         {
-            glfwSetWindowShouldClose(window, true);
+            ImGui::Render();
+            appScreen = AppScreen::Loading;
+            loadingDestination = LoadingDestination::MainMenu;
+            loadingScreenUntil = currentFrame + 0.85f;
+            environmentMenu.open = false;
+            skyPanel.open = false;
+            glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+            menuCursorVisible = true;
+            camera.firstClick = true;
+            continue;
         }
 
         const bool wantsUiCursor = environmentMenu.open || skyPanel.open || editor.WantsCursor() || collisionEditor.WantsCursor();
@@ -1396,8 +2171,10 @@ int main()
 
         const glm::mat4 sceneModelTransform = BuildSceneModelTransform(sceneData.entities.front(), baseModelTransform);
         const glm::vec3 prevPos = camera.Position;
+        bool playerWalking = false;
         if (!environmentMenu.open && !skyPanel.open && !editor.IsActive() && !collisionEditor.IsActive())
         {
+            playerWalking = !car.driving && !camera.flyMode && IsGameplayMovementPressed(window);
             if (environmentMode == EnvironmentMode::Manual && !skyPanel.open)
             {
                 const bool decreaseTime = glfwGetKey(window, GLFW_KEY_J) == GLFW_PRESS || glfwGetKey(window, GLFW_KEY_KP_4) == GLFW_PRESS;
@@ -1408,14 +2185,17 @@ int main()
                     manualTimeOfDay = WrapTimeOfDay(manualTimeOfDay + deltaTime * 0.08f);
             }
 
-            camera.Inputs(window, deltaTime);
+            if (!car.driving)
+                camera.Inputs(window, deltaTime);
+
+            UpdateDrivableCar(window, camera, car, model, sceneModelTransform, interaction, currentFrame, deltaTime);
         }
         else if (!environmentMenu.open && !skyPanel.open && !editor.IsActive() && collisionEditor.IsActive())
         {
             HandleCollisionEditorCameraControls(window, camera, deltaTime);
         }
 
-        if (!camera.flyMode)
+        if (!camera.flyMode && !car.driving)
         {
             glm::vec3 snapped;
             if (model.TrySnapToWalkableSurface(
@@ -1440,21 +2220,33 @@ int main()
             if (blocked) camera.Position = prevPos;
         }
 
-        camera.Position = collisionSystem.ResolveCameraPosition(
-            colliderManager.GetColliders(),
-            prevPos,
-            camera.Position,
-            cameraCollisionRadius);
+        if (!car.driving)
+        {
+            camera.Position = collisionSystem.ResolveCameraPosition(
+                colliderManager.GetColliders(),
+                prevPos,
+                camera.Position,
+                cameraCollisionRadius);
+        }
 
-        camera.updateMatrix(cameraFov, cameraNearPlane, cameraFarPlane);
-        glm::mat4 view = camera.GetViewMatrix();
+        const bool gameplayHudActive = !environmentMenu.open && !skyPanel.open && !editor.IsActive() && !collisionEditor.IsActive();
+        UpdateWalkAnimation(walkAnimation, gameplayHudActive && !camera.flyMode && !car.driving && playerWalking, deltaTime);
+        interaction.target = SceneSelection();
+        interaction.targetName.clear();
+        if (!car.driving)
+            interaction.interactWasDown = false;
+
+        Camera renderCamera = camera;
+        renderCamera.Position += ComputeWalkBobOffset(camera, walkAnimation);
+        renderCamera.updateMatrix(cameraFov, cameraNearPlane, cameraFarPlane);
+        glm::mat4 view = renderCamera.GetViewMatrix();
         glm::mat4 projection = glm::perspective(glm::radians(cameraFov), (float)width / height, cameraNearPlane, cameraFarPlane);
 
         shaderProgram.Activate();
         glUniform4f(glGetUniformLocation(shaderProgram.ID, "lightColor"), lightColor.x, lightColor.y, lightColor.z, lightColor.w);
         glUniform3f(glGetUniformLocation(shaderProgram.ID, "lightPos"), mainLightPos.x, mainLightPos.y, mainLightPos.z);
         glUniform3f(glGetUniformLocation(shaderProgram.ID, "moonPos"), moonPos.x, moonPos.y, moonPos.z);
-        glUniform3f(glGetUniformLocation(shaderProgram.ID, "viewPos"), camera.Position.x, camera.Position.y, camera.Position.z);
+        glUniform3f(glGetUniformLocation(shaderProgram.ID, "viewPos"), renderCamera.Position.x, renderCamera.Position.y, renderCamera.Position.z);
         glUniform3f(glGetUniformLocation(shaderProgram.ID, "ambientColor"), ambientColor.x, ambientColor.y, ambientColor.z);
         glUniform1f(glGetUniformLocation(shaderProgram.ID, "time"), currentFrame);
         glUniform1f(glGetUniformLocation(shaderProgram.ID, "dayFactor"), dayFactor);
@@ -1467,17 +2259,18 @@ int main()
 
         for (const Entity& entity : sceneData.entities)
         {
-            model.Draw(shaderProgram, camera, BuildSceneModelTransform(entity, baseModelTransform));
+            model.Draw(shaderProgram, renderCamera, BuildSceneModelTransform(entity, baseModelTransform));
         }
+        carModel.Draw(shaderProgram, renderCamera, BuildCarTransform(car));
 
-        DrawInteriorLightCubes(sceneData.lights, lightShader, camera, lightCubeVAO, skySunDirection);
+        DrawInteriorLightCubes(sceneData.lights, lightShader, renderCamera, lightCubeVAO, skySunDirection);
 
         if (nightFactor > 0.02f) {
             sphereShader.Activate();
             glUniform1f(glGetUniformLocation(sphereShader.ID, "useTexture"), 0.0f);
             glUniform1f(glGetUniformLocation(sphereShader.ID, "unlit"), 1.0f);
-            glUniform3f(glGetUniformLocation(sphereShader.ID, "lightPos"), camera.Position.x, camera.Position.y, camera.Position.z);
-            glUniform3f(glGetUniformLocation(sphereShader.ID, "viewPos"), camera.Position.x, camera.Position.y, camera.Position.z);
+            glUniform3f(glGetUniformLocation(sphereShader.ID, "lightPos"), renderCamera.Position.x, renderCamera.Position.y, renderCamera.Position.z);
+            glUniform3f(glGetUniformLocation(sphereShader.ID, "viewPos"), renderCamera.Position.x, renderCamera.Position.y, renderCamera.Position.z);
             glUniform1f(glGetUniformLocation(sphereShader.ID, "isDay"), 1.0f);
             glUniform1f(glGetUniformLocation(sphereShader.ID, "sunHeight"), sunHeight);
             glUniformMatrix4fv(glGetUniformLocation(sphereShader.ID, "view"), 1, GL_FALSE, glm::value_ptr(view));
@@ -1500,7 +2293,7 @@ int main()
             glUniformMatrix4fv(glGetUniformLocation(sphereShader.ID, "projection"), 1, GL_FALSE, glm::value_ptr(projection));
             glUniform3f(glGetUniformLocation(sphereShader.ID, "color"), 1.0f, 0.85f, 0.45f);
             glUniform3f(glGetUniformLocation(sphereShader.ID, "lightPos"), mainLightPos.x, mainLightPos.y, mainLightPos.z);
-            glUniform3f(glGetUniformLocation(sphereShader.ID, "viewPos"), camera.Position.x, camera.Position.y, camera.Position.z);
+            glUniform3f(glGetUniformLocation(sphereShader.ID, "viewPos"), renderCamera.Position.x, renderCamera.Position.y, renderCamera.Position.z);
             glUniform1f(glGetUniformLocation(sphereShader.ID, "isDay"), 1.0f);
             glUniform1f(glGetUniformLocation(sphereShader.ID, "sunHeight"), sunHeight);
 
@@ -1523,7 +2316,7 @@ int main()
             glUniformMatrix4fv(glGetUniformLocation(sphereShader.ID, "projection"), 1, GL_FALSE, glm::value_ptr(projection));
             glUniform3f(glGetUniformLocation(sphereShader.ID, "color"), 0.75f, 0.80f, 0.95f);
             glUniform3f(glGetUniformLocation(sphereShader.ID, "lightPos"), mainLightPos.x, mainLightPos.y, mainLightPos.z);
-            glUniform3f(glGetUniformLocation(sphereShader.ID, "viewPos"), camera.Position.x, camera.Position.y, camera.Position.z);
+            glUniform3f(glGetUniformLocation(sphereShader.ID, "viewPos"), renderCamera.Position.x, renderCamera.Position.y, renderCamera.Position.z);
             glUniform1f(glGetUniformLocation(sphereShader.ID, "isDay"), 0.0f);
             glUniform1f(glGetUniformLocation(sphereShader.ID, "sunHeight"), sunHeight);
 
@@ -1533,8 +2326,10 @@ int main()
         }
 
         if (!useFastRenderMode)
-            skybox.Draw(camera, cameraFov, cameraNearPlane, cameraFarPlane, currentFrame, sunHeight, skySunDirection);
+            skybox.Draw(renderCamera, cameraFov, cameraNearPlane, cameraFarPlane, currentFrame, sunHeight, skySunDirection);
 
+        if (gameplayHudActive)
+            DrawPlayerHud(interaction, walkAnimation, currentFrame, overlayShader, overlayVAO, overlayVBO);
         DrawEnvironmentMenu(environmentMenu, environmentMode, manualTimeOfDay, overlayShader, overlayVAO, overlayVBO);
         DrawSkyControlImGui(skyPanel, environmentMode, manualTimeOfDay, cloudSettings);
         editor.Render();
