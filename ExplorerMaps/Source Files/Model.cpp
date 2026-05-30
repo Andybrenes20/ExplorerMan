@@ -344,6 +344,16 @@ glm::vec3 Model::GetCenter() const
 	return (boundsMin + boundsMax) * 0.5f;
 }
 
+glm::vec3 Model::GetBoundsMin() const
+{
+	return hasBounds ? boundsMin : glm::vec3(0.0f, 0.0f, 0.0f);
+}
+
+glm::vec3 Model::GetBoundsMax() const
+{
+	return hasBounds ? boundsMax : glm::vec3(0.0f, 0.0f, 0.0f);
+}
+
 float Model::GetRadius() const
 {
 	if (!hasBounds)

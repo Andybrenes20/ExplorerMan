@@ -18,6 +18,7 @@ in vec2 texCoord;
 uniform sampler2D diffuse0;
 // Gets the color of the light from the main function
 uniform vec4 lightColor;
+uniform float objectLightBoost;
 uniform float nightFactor;
 uniform int lampLightCount;
 uniform vec3 lampLightPositions[12];
@@ -66,6 +67,8 @@ void main()
 
 	litColor += base.rgb * lampContribution * nightFactor;
 	litColor += emissiveLamp * nightFactor;
+	vec3 visibleObjectColor = base.rgb * 2.35f + vec3(0.18f);
+	litColor = mix(litColor, max(litColor, visibleObjectColor), clamp(objectLightBoost, 0.0f, 1.0f));
 	litColor = pow(max(litColor, vec3(0.0f)), vec3(1.0f / 1.35f));
 	FragColor = vec4(litColor, base.a);
 }

@@ -154,9 +154,26 @@ struct DrivableCarState
 {
     glm::vec3 position = glm::vec3(150.0f, -179.0f, 620.0f);
     float yawDegrees = -90.0f;
+    float visualYawDegrees = -90.0f;
     float speed = 0.0f;
+    float steeringAmount = 0.0f;
+    float cameraYawOffsetDegrees = 0.0f;
+    float cameraHeightOffset = 0.0f;
+    bool groundHeightInitialized = false;
     bool driving = false;
     bool interactWasDown = false;
+};
+
+struct GameplayGamepadInput
+{
+    bool connected = false;
+    float leftX = 0.0f;
+    float leftY = 0.0f;
+    float rightX = 0.0f;
+    float rightY = 0.0f;
+    float rightTrigger = 0.0f;
+    float leftTrigger = 0.0f;
+    bool interactDown = false;
 };
 
 struct MainMenuState
@@ -182,12 +199,49 @@ bool IsInsideRect(double px, double py, float x, float y, float w, float h)
     return px >= x && px <= (x + w) && py >= y && py <= (y + h);
 }
 
-bool IsGameplayMovementPressed(GLFWwindow* window)
+float ApplyStickDeadzone(float value, float deadzone = 0.18f)
+{
+    if (std::abs(value) <= deadzone)
+        return 0.0f;
+
+    const float sign = value < 0.0f ? -1.0f : 1.0f;
+    return sign * glm::clamp((std::abs(value) - deadzone) / (1.0f - deadzone), 0.0f, 1.0f);
+}
+
+float NormalizeTriggerAxis(float value)
+{
+    return glm::clamp((value + 1.0f) * 0.5f, 0.0f, 1.0f);
+}
+
+GameplayGamepadInput ReadGameplayGamepadInput()
+{
+    GameplayGamepadInput input;
+    if (!glfwJoystickIsGamepad(GLFW_JOYSTICK_1))
+        return input;
+
+    GLFWgamepadstate state;
+    if (!glfwGetGamepadState(GLFW_JOYSTICK_1, &state))
+        return input;
+
+    input.connected = true;
+    input.leftX = ApplyStickDeadzone(state.axes[GLFW_GAMEPAD_AXIS_LEFT_X]);
+    input.leftY = ApplyStickDeadzone(state.axes[GLFW_GAMEPAD_AXIS_LEFT_Y]);
+    input.rightX = ApplyStickDeadzone(state.axes[GLFW_GAMEPAD_AXIS_RIGHT_X]);
+    input.rightY = ApplyStickDeadzone(state.axes[GLFW_GAMEPAD_AXIS_RIGHT_Y]);
+    input.rightTrigger = NormalizeTriggerAxis(state.axes[GLFW_GAMEPAD_AXIS_RIGHT_TRIGGER]);
+    input.leftTrigger = NormalizeTriggerAxis(state.axes[GLFW_GAMEPAD_AXIS_LEFT_TRIGGER]);
+    input.interactDown = state.buttons[GLFW_GAMEPAD_BUTTON_X] == GLFW_PRESS;
+    return input;
+}
+
+bool IsGameplayMovementPressed(GLFWwindow* window, const GameplayGamepadInput& gamepad)
 {
     return glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS ||
         glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS ||
         glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS ||
-        glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS;
+        glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS ||
+        std::abs(gamepad.leftX) > 0.01f ||
+        std::abs(gamepad.leftY) > 0.01f;
 }
 
 float IntersectInteractionSphere(const glm::vec3& rayOrigin, const glm::vec3& rayDirection, const glm::vec3& center, float radius);
@@ -198,12 +252,40 @@ glm::vec3 CarForward(float yawDegrees)
     return glm::normalize(glm::vec3(std::cos(yawRadians), 0.0f, std::sin(yawRadians)));
 }
 
-glm::mat4 BuildCarTransform(const DrivableCarState& car)
+float MoveAngleTowards(float currentDegrees, float targetDegrees, float maxDeltaDegrees)
+{
+    float delta = std::fmod(targetDegrees - currentDegrees + 540.0f, 360.0f) - 180.0f;
+    delta = glm::clamp(delta, -maxDeltaDegrees, maxDeltaDegrees);
+    return currentDegrees + delta;
+}
+
+glm::vec3 ComputeCarLocalAnchorOffset(const Model& carModel)
+{
+    const glm::vec3 boundsMin = carModel.GetBoundsMin();
+    const glm::vec3 boundsMax = carModel.GetBoundsMax();
+    const glm::vec3 boundsCenter = (boundsMin + boundsMax) * 0.5f;
+    return glm::vec3(-boundsCenter.x, -boundsMin.y, -boundsCenter.z);
+}
+
+glm::mat4 BuildCarTransform(const DrivableCarState& car, const glm::vec3& localAnchorOffset)
 {
     constexpr float carVisualYawOffset = 90.0f;
     return glm::translate(glm::mat4(1.0f), car.position) *
-        glm::rotate(glm::mat4(1.0f), glm::radians(car.yawDegrees + carVisualYawOffset), glm::vec3(0.0f, 1.0f, 0.0f)) *
-        glm::scale(glm::mat4(1.0f), glm::vec3(18.0f));
+        glm::rotate(glm::mat4(1.0f), glm::radians(car.visualYawDegrees + carVisualYawOffset), glm::vec3(0.0f, 1.0f, 0.0f)) *
+        glm::scale(glm::mat4(1.0f), glm::vec3(18.0f)) *
+        glm::translate(glm::mat4(1.0f), localAnchorOffset);
+}
+
+void DrawDrivableCar(
+    Shader& shader,
+    Camera& camera,
+    Model& carModel,
+    const DrivableCarState& car,
+    const glm::vec3& localAnchorOffset)
+{
+    glUniform1f(glGetUniformLocation(shader.ID, "objectLightBoost"), 1.0f);
+    carModel.Draw(shader, camera, BuildCarTransform(car, localAnchorOffset));
+    glUniform1f(glGetUniformLocation(shader.ID, "objectLightBoost"), 0.0f);
 }
 
 bool IsLookingAtCar(const Camera& camera, const DrivableCarState& car)
@@ -221,10 +303,11 @@ void UpdateDrivableCar(
     const Model& cityModel,
     const glm::mat4& sceneModelTransform,
     InteractionState& interaction,
+    const GameplayGamepadInput& gamepad,
     float currentFrame,
     float deltaTime)
 {
-    const bool interactDown = glfwGetKey(window, GLFW_KEY_E) == GLFW_PRESS;
+    const bool interactDown = glfwGetKey(window, GLFW_KEY_E) == GLFW_PRESS || gamepad.interactDown;
     const bool interactPressed = interactDown && !car.interactWasDown;
     const bool lookingAtCar = IsLookingAtCar(camera, car);
 
@@ -262,8 +345,12 @@ void UpdateDrivableCar(
     float acceleration = 0.0f;
     if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
         acceleration += 95.0f;
+    if (gamepad.rightTrigger > 0.02f)
+        acceleration += 95.0f * gamepad.rightTrigger;
     if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS)
         acceleration -= 75.0f;
+    if (gamepad.leftTrigger > 0.02f)
+        acceleration -= 75.0f * gamepad.leftTrigger;
 
     car.speed += acceleration * deltaTime;
     if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS)
@@ -273,13 +360,29 @@ void UpdateDrivableCar(
 
     car.speed = glm::clamp(car.speed, -45.0f, 130.0f);
 
-    const float steerInput =
+    float targetSteering =
         (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS ? 1.0f : 0.0f) -
         (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS ? 1.0f : 0.0f);
-    const float steeringGrip = glm::smoothstep(4.0f, 40.0f, std::abs(car.speed));
-    car.yawDegrees += steerInput * steeringGrip * 82.0f * deltaTime * (car.speed >= 0.0f ? 1.0f : -1.0f);
+    if (std::abs(gamepad.leftX) > 0.01f)
+        targetSteering = gamepad.leftX;
 
-    glm::vec3 previousCarPosition = car.position;
+    targetSteering *= 0.90f;
+
+    const float steeringResponse = std::abs(targetSteering) > std::abs(car.steeringAmount) ? 7.5f : 9.0f;
+    car.steeringAmount = glm::mix(
+        car.steeringAmount,
+        glm::clamp(targetSteering, -1.0f, 1.0f),
+        glm::clamp(deltaTime * steeringResponse, 0.0f, 1.0f));
+
+    const float speedAbs = std::abs(car.speed);
+    const float steeringGrip = glm::smoothstep(3.0f, 22.0f, speedAbs);
+    const float highSpeedStability = glm::mix(1.0f, 0.50f, glm::smoothstep(58.0f, 130.0f, speedAbs));
+    const float maxYawRateDegrees = glm::mix(68.0f, 38.0f, glm::smoothstep(45.0f, 130.0f, speedAbs));
+    const float yawRateDegrees = car.steeringAmount * steeringGrip * highSpeedStability * maxYawRateDegrees;
+    car.yawDegrees += yawRateDegrees * deltaTime * (car.speed >= 0.0f ? 1.0f : -1.0f);
+    car.visualYawDegrees = MoveAngleTowards(car.visualYawDegrees, car.yawDegrees, 48.0f * deltaTime);
+
+    const glm::vec3 previousCarPosition = car.position;
     car.position += CarForward(car.yawDegrees) * car.speed * deltaTime;
 
     glm::vec3 snappedCarPosition;
@@ -293,17 +396,37 @@ void UpdateDrivableCar(
         walkMaxSlopeDegrees,
         snappedCarPosition))
     {
-        car.position = snappedCarPosition - glm::vec3(0.0f, 10.0f, 0.0f);
+        const float targetGroundY = snappedCarPosition.y - 10.0f;
+        if (!car.groundHeightInitialized)
+        {
+            car.position.y = targetGroundY;
+            car.groundHeightInitialized = true;
+        }
+        else
+        {
+            car.position.y = glm::mix(car.position.y, targetGroundY, glm::clamp(deltaTime * 8.0f, 0.0f, 1.0f));
+        }
     }
     else
     {
-        car.position = previousCarPosition;
+        car.position.x = previousCarPosition.x;
+        car.position.z = previousCarPosition.z;
         car.speed = 0.0f;
     }
 
-    const glm::vec3 forward = CarForward(car.yawDegrees);
-    const glm::vec3 cameraTarget = car.position + glm::vec3(0.0f, 16.0f, 0.0f);
-    const glm::vec3 desiredCameraPosition = cameraTarget - forward * 52.0f + glm::vec3(0.0f, 24.0f, 0.0f);
+    if (std::abs(gamepad.rightX) > 0.01f)
+        car.cameraYawOffsetDegrees = glm::clamp(car.cameraYawOffsetDegrees + gamepad.rightX * 145.0f * deltaTime, -135.0f, 135.0f);
+    else
+        car.cameraYawOffsetDegrees = glm::mix(car.cameraYawOffsetDegrees, 0.0f, glm::clamp(deltaTime * 1.8f, 0.0f, 1.0f));
+
+    if (std::abs(gamepad.rightY) > 0.01f)
+        car.cameraHeightOffset = glm::clamp(car.cameraHeightOffset - gamepad.rightY * 34.0f * deltaTime, -12.0f, 18.0f);
+    else
+        car.cameraHeightOffset = glm::mix(car.cameraHeightOffset, 0.0f, glm::clamp(deltaTime * 1.8f, 0.0f, 1.0f));
+
+    const glm::vec3 cameraForward = CarForward(car.yawDegrees + car.cameraYawOffsetDegrees);
+    const glm::vec3 cameraTarget = car.position + glm::vec3(0.0f, 16.0f + car.cameraHeightOffset * 0.25f, 0.0f);
+    const glm::vec3 desiredCameraPosition = cameraTarget - cameraForward * 52.0f + glm::vec3(0.0f, 24.0f + car.cameraHeightOffset, 0.0f);
     camera.Position = glm::mix(camera.Position, desiredCameraPosition, glm::clamp(deltaTime * 8.0f, 0.0f, 1.0f));
     camera.Orientation = glm::normalize(cameraTarget - camera.Position);
 }
@@ -710,7 +833,13 @@ std::string SelectionDisplayName(const EditorSceneData& sceneData, const SceneSe
     return "";
 }
 
-void UpdateInteractionState(GLFWwindow* window, const Camera& camera, const EditorSceneData& sceneData, InteractionState& interaction, float currentFrame)
+void UpdateInteractionState(
+    GLFWwindow* window,
+    const Camera& camera,
+    const EditorSceneData& sceneData,
+    InteractionState& interaction,
+    const GameplayGamepadInput& gamepad,
+    float currentFrame)
 {
     const float maxInteractDistance = 180.0f;
     const glm::vec3 rayOrigin = camera.Position;
@@ -747,7 +876,7 @@ void UpdateInteractionState(GLFWwindow* window, const Camera& camera, const Edit
     interaction.target = bestSelection;
     interaction.targetName = SelectionDisplayName(sceneData, bestSelection);
 
-    const bool interactDown = glfwGetKey(window, GLFW_KEY_E) == GLFW_PRESS;
+    const bool interactDown = glfwGetKey(window, GLFW_KEY_E) == GLFW_PRESS || gamepad.interactDown;
     if (interactDown && !interaction.interactWasDown && interaction.target.IsValid())
     {
         interaction.message = "INTERACCION: " + interaction.targetName;
@@ -1000,14 +1129,14 @@ void DrawMainMenuOverlay(const MainMenuState& menu, Shader& overlayShader, GLuin
     AddOverlayRect(vertices, panelX, panelY, panelW, panelH, panelColor);
     AddOverlayRect(vertices, panelX, panelY, panelW, 6.0f, accent);
 
-    AddOverlayText(vertices, "EXPLORERMAN", panelX + 64.0f, panelY + 74.0f, 1.85f, accent);
+    AddOverlayText(vertices, "EXPLORERMAPS", panelX + 64.0f, panelY + 74.0f, 1.85f, accent);
     AddOverlayText(vertices, "MENU DE INICIO", panelX + 66.0f, panelY + 132.0f, 0.82f, textMuted);
 
     AddOverlayRect(vertices, panelX + 64.0f, panelY + 190.0f, panelW - 128.0f, 58.0f, menu.selection == 0 ? selectedButton : startButton);
     AddOverlayRect(vertices, panelX + 64.0f, panelY + 270.0f, panelW - 128.0f, 58.0f, menu.selection == 1 ? selectedButton : exitButton);
     AddOverlayText(vertices, "INICIAR MUNDO", panelX + 128.0f, panelY + 211.0f, 0.96f, menu.selection == 0 ? glm::vec4(0.04f, 0.05f, 0.07f, 1.0f) : textMain);
     AddOverlayText(vertices, "CERRAR PROGRAMA", panelX + 112.0f, panelY + 291.0f, 0.90f, menu.selection == 1 ? glm::vec4(0.04f, 0.05f, 0.07f, 1.0f) : glm::vec4(1.0f, 0.86f, 0.82f, 1.0f));
-    AddOverlayText(vertices, "ExplorerMan", panelX + 66.0f, panelY + 370.0f, 0.64f, textMuted);
+    AddOverlayText(vertices, "ExplorerMaps", panelX + 66.0f, panelY + 370.0f, 0.64f, textMuted);
 
     glDisable(GL_DEPTH_TEST);
     glEnable(GL_BLEND);
@@ -1769,6 +1898,7 @@ int main(int argc, char** argv)
         : std::string("modelos/city2.glb");
     Model model(activeModelPath.c_str());
     Model carModel("modelos/Coches/Car_1/source/Car1.gltf");
+    const glm::vec3 carLocalAnchorOffset = ComputeCarLocalAnchorOffset(carModel);
     Skybox skybox(
         GetSkyboxFacePaths(EnvironmentMode::Day),
         GetSkyboxFacePaths(EnvironmentMode::Night),
@@ -1836,6 +1966,7 @@ int main(int argc, char** argv)
         previewCamera.cameraMatrix = request.projection * request.view;
 
         shaderProgram.Activate();
+        glUniform1f(glGetUniformLocation(shaderProgram.ID, "objectLightBoost"), 0.0f);
         glUniform4f(glGetUniformLocation(shaderProgram.ID, "lightColor"), lightColor.x, lightColor.y, lightColor.z, lightColor.w);
         glUniform3f(glGetUniformLocation(shaderProgram.ID, "lightPos"), mainLightPos.x, mainLightPos.y, mainLightPos.z);
         glUniform3f(glGetUniformLocation(shaderProgram.ID, "moonPos"), moonPos.x, moonPos.y, moonPos.z);
@@ -1854,7 +1985,7 @@ int main(int argc, char** argv)
         {
             model.Draw(shaderProgram, previewCamera, BuildSceneModelTransform(entity, baseModelTransform));
         }
-        carModel.Draw(shaderProgram, previewCamera, BuildCarTransform(car));
+        DrawDrivableCar(shaderProgram, previewCamera, carModel, car, carLocalAnchorOffset);
 
         DrawInteriorLightCubes(sceneData.lights, lightShader, previewCamera, lightCubeVAO, skySunDirection);
     };
@@ -1877,6 +2008,7 @@ int main(int argc, char** argv)
         previewCamera.cameraMatrix = request.projection * request.view;
 
         shaderProgram.Activate();
+        glUniform1f(glGetUniformLocation(shaderProgram.ID, "objectLightBoost"), 0.0f);
         glUniform4f(glGetUniformLocation(shaderProgram.ID, "lightColor"), lightColor.x, lightColor.y, lightColor.z, lightColor.w);
         glUniform3f(glGetUniformLocation(shaderProgram.ID, "lightPos"), mainLightPos.x, mainLightPos.y, mainLightPos.z);
         glUniform3f(glGetUniformLocation(shaderProgram.ID, "moonPos"), moonPos.x, moonPos.y, moonPos.z);
@@ -1895,7 +2027,7 @@ int main(int argc, char** argv)
         {
             model.Draw(shaderProgram, previewCamera, BuildSceneModelTransform(entity, baseModelTransform));
         }
-        carModel.Draw(shaderProgram, previewCamera, BuildCarTransform(car));
+        DrawDrivableCar(shaderProgram, previewCamera, carModel, car, carLocalAnchorOffset);
 
         DrawInteriorLightCubes(sceneData.lights, lightShader, previewCamera, lightCubeVAO, skySunDirection);
     };
@@ -1936,6 +2068,7 @@ int main(int argc, char** argv)
         snappedCarStart))
     {
         car.position = snappedCarStart - glm::vec3(0.0f, 10.0f, 0.0f);
+        car.groundHeightInitialized = true;
     }
     AppScreen appScreen = AppScreen::World;
     LoadingDestination loadingDestination = LoadingDestination::World;
@@ -2171,10 +2304,11 @@ int main(int argc, char** argv)
 
         const glm::mat4 sceneModelTransform = BuildSceneModelTransform(sceneData.entities.front(), baseModelTransform);
         const glm::vec3 prevPos = camera.Position;
+        const GameplayGamepadInput gamepad = ReadGameplayGamepadInput();
         bool playerWalking = false;
         if (!environmentMenu.open && !skyPanel.open && !editor.IsActive() && !collisionEditor.IsActive())
         {
-            playerWalking = !car.driving && !camera.flyMode && IsGameplayMovementPressed(window);
+            playerWalking = !car.driving && !camera.flyMode && IsGameplayMovementPressed(window, gamepad);
             if (environmentMode == EnvironmentMode::Manual && !skyPanel.open)
             {
                 const bool decreaseTime = glfwGetKey(window, GLFW_KEY_J) == GLFW_PRESS || glfwGetKey(window, GLFW_KEY_KP_4) == GLFW_PRESS;
@@ -2188,7 +2322,7 @@ int main(int argc, char** argv)
             if (!car.driving)
                 camera.Inputs(window, deltaTime);
 
-            UpdateDrivableCar(window, camera, car, model, sceneModelTransform, interaction, currentFrame, deltaTime);
+            UpdateDrivableCar(window, camera, car, model, sceneModelTransform, interaction, gamepad, currentFrame, deltaTime);
         }
         else if (!environmentMenu.open && !skyPanel.open && !editor.IsActive() && collisionEditor.IsActive())
         {
@@ -2243,6 +2377,7 @@ int main(int argc, char** argv)
         glm::mat4 projection = glm::perspective(glm::radians(cameraFov), (float)width / height, cameraNearPlane, cameraFarPlane);
 
         shaderProgram.Activate();
+        glUniform1f(glGetUniformLocation(shaderProgram.ID, "objectLightBoost"), 0.0f);
         glUniform4f(glGetUniformLocation(shaderProgram.ID, "lightColor"), lightColor.x, lightColor.y, lightColor.z, lightColor.w);
         glUniform3f(glGetUniformLocation(shaderProgram.ID, "lightPos"), mainLightPos.x, mainLightPos.y, mainLightPos.z);
         glUniform3f(glGetUniformLocation(shaderProgram.ID, "moonPos"), moonPos.x, moonPos.y, moonPos.z);
@@ -2261,7 +2396,7 @@ int main(int argc, char** argv)
         {
             model.Draw(shaderProgram, renderCamera, BuildSceneModelTransform(entity, baseModelTransform));
         }
-        carModel.Draw(shaderProgram, renderCamera, BuildCarTransform(car));
+        DrawDrivableCar(shaderProgram, renderCamera, carModel, car, carLocalAnchorOffset);
 
         DrawInteriorLightCubes(sceneData.lights, lightShader, renderCamera, lightCubeVAO, skySunDirection);
 

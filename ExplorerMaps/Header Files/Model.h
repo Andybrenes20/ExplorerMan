@@ -27,6 +27,8 @@ public:
 		const glm::mat4& worldTransform = glm::mat4(1.0f),
 		bool cameraInsideStructure = false);
 	glm::vec3 GetCenter() const;
+	glm::vec3 GetBoundsMin() const;
+	glm::vec3 GetBoundsMax() const;
 	float GetRadius() const;
 	glm::vec3 ResolveCollision(const glm::vec3& position, const glm::mat4& worldTransform, float radius) const;
 	bool TrySnapToWalkableSurface(
