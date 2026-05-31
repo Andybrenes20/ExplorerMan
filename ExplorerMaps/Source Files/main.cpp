@@ -2557,7 +2557,7 @@ int main(int argc, char** argv)
         }
 
         if (!useFastRenderMode)
-            skybox.Draw(renderCamera, cameraFov, cameraNearPlane, cameraFarPlane, currentFrame, sunHeight, skySunDirection);
+            skybox.Draw(renderCamera, cameraFov, cameraNearPlane, cameraFarPlane, currentFrame, sunHeight, skySunDirection, moonPos);
 
         DrawRainOverlay(rainShader, rainVAO, smoothedRainIntensity, nightFactor, currentFrame);
 

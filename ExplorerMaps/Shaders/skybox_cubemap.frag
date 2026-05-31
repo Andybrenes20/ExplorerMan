@@ -10,6 +10,7 @@ uniform float blendFactor;
 uniform float time;
 uniform float sunHeight;
 uniform vec3 sunDir;
+uniform vec3 moonDir;
 uniform float cloudCoverage;
 uniform float cloudSpeed;
 uniform float cloudCrispiness;
@@ -127,8 +128,8 @@ void main()
 	vec3 nightBase = mix(vec3(0.006, 0.012, 0.036), vec3(0.045, 0.070, 0.145), clamp(dir.y * 0.5 + 0.5, 0.0, 1.0));
 	float nightNebula = fbm(starUv * 18.0 + vec2(0.0, time * 0.00008));
 	float upperNight = smoothstep(0.36, 1.0, dir.y * 0.5 + 0.5);
-	vec3 moonDir = normalize(-skySunDir + vec3(0.0, 0.18, 0.0));
-	float moonDot = max(dot(dir, moonDir), 0.0);
+	vec3 skyMoonDir = normalize(moonDir);
+	float moonDot = max(dot(dir, skyMoonDir), 0.0);
 	float moonAura = pow(moonDot, 7.0) * nightAmount;
 	float moonCore = pow(moonDot, 150.0) * nightAmount;
 	float horizonNightGlow = (1.0 - smoothstep(0.0, 0.32, abs(dir.y))) * nightAmount;

@@ -31,7 +31,7 @@ public:
 	);
 	~Skybox();
 
-	void Draw(const Camera& camera, float FOVdeg, float nearPlane, float farPlane, float time, float sunHeight, const glm::vec3& sunDirection);
+	void Draw(const Camera& camera, float FOVdeg, float nearPlane, float farPlane, float time, float sunHeight, const glm::vec3& sunDirection, const glm::vec3& moonPosition);
 	void SetBlendFactor(float factor);
 	void SetCloudSettings(const SkyCloudSettings& settings);
 	static std::vector<unsigned char> BuildProceduralFace(int width, int height, int faceIndex, bool nightTheme);

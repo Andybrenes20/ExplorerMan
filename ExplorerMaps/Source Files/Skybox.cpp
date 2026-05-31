@@ -146,7 +146,7 @@ void Skybox::SetCloudSettings(const SkyCloudSettings& settings)
 	cloudSettings = settings;
 }
 
-void Skybox::Draw(const Camera& camera, float FOVdeg, float nearPlane, float farPlane, float time, float sunHeight, const glm::vec3& sunDirection)
+void Skybox::Draw(const Camera& camera, float FOVdeg, float nearPlane, float farPlane, float time, float sunHeight, const glm::vec3& sunDirection, const glm::vec3& moonPosition)
 {
 	glDepthFunc(GL_LEQUAL);
 
@@ -163,6 +163,16 @@ void Skybox::Draw(const Camera& camera, float FOVdeg, float nearPlane, float far
 	glUniform1f(glGetUniformLocation(shader.ID, "time"), time);
 	glUniform1f(glGetUniformLocation(shader.ID, "sunHeight"), sunHeight);
 	glUniform3f(glGetUniformLocation(shader.ID, "sunDir"), sunDirection.x, sunDirection.y, sunDirection.z);
+	glm::vec3 moonDirection = moonPosition - camera.Position;
+	if (glm::length(moonDirection) < 0.001f)
+	{
+		moonDirection = -sunDirection;
+	}
+	else
+	{
+		moonDirection = glm::normalize(moonDirection);
+	}
+	glUniform3f(glGetUniformLocation(shader.ID, "moonDir"), moonDirection.x, moonDirection.y, moonDirection.z);
 	glUniform1f(glGetUniformLocation(shader.ID, "cloudCoverage"), cloudSettings.coverage);
 	glUniform1f(glGetUniformLocation(shader.ID, "cloudSpeed"), cloudSettings.speed);
 	glUniform1f(glGetUniformLocation(shader.ID, "cloudCrispiness"), cloudSettings.crispiness);
