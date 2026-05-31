@@ -1,6 +1,7 @@
 #include "CollisionEditor.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstring>
 
 #include <glm/gtc/matrix_inverse.hpp>
@@ -12,21 +13,69 @@
 
 namespace
 {
+    constexpr float kMaxRotationDeltaPerFrame = 10.0f;
+
     glm::mat4 ComposeGizmoMatrix(const BoxCollider& collider)
     {
         return ComposeColliderMatrix(collider);
     }
 
-    void ApplyGizmoMatrix(BoxCollider& collider, const glm::mat4& matrix)
+    float NormalizeAngleDelta(float degrees)
+    {
+        degrees = std::fmod(degrees + 180.0f, 360.0f);
+        if (degrees < 0.0f)
+        {
+            degrees += 360.0f;
+        }
+
+        return degrees - 180.0f;
+    }
+
+    glm::vec3 ClampRotationDelta(const glm::vec3& delta)
+    {
+        glm::vec3 normalized(
+            NormalizeAngleDelta(delta.x),
+            NormalizeAngleDelta(delta.y),
+            NormalizeAngleDelta(delta.z));
+
+        const float maxComponent = std::max(
+            std::abs(normalized.x),
+            std::max(std::abs(normalized.y), std::abs(normalized.z)));
+        if (maxComponent > kMaxRotationDeltaPerFrame)
+        {
+            normalized *= kMaxRotationDeltaPerFrame / maxComponent;
+        }
+
+        return normalized;
+    }
+
+    void ApplyGizmoMatrix(
+        BoxCollider& collider,
+        const glm::mat4& matrix,
+        const glm::mat4& deltaMatrix,
+        ImGuizmo::OPERATION operation)
     {
         float translation[3] = {};
         float rotation[3] = {};
         float scale[3] = {};
         ImGuizmo::DecomposeMatrixToComponents(&matrix[0][0], translation, rotation, scale);
 
-        collider.position = glm::vec3(translation[0], translation[1], translation[2]);
-        collider.rotation = glm::vec3(rotation[0], rotation[1], rotation[2]);
-        collider.scale = glm::max(glm::vec3(scale[0], scale[1], scale[2]), glm::vec3(0.1f));
+        if (operation == ImGuizmo::TRANSLATE)
+        {
+            collider.position = glm::vec3(translation[0], translation[1], translation[2]);
+        }
+        else if (operation == ImGuizmo::ROTATE)
+        {
+            float deltaTranslation[3] = {};
+            float deltaRotation[3] = {};
+            float deltaScale[3] = {};
+            ImGuizmo::DecomposeMatrixToComponents(&deltaMatrix[0][0], deltaTranslation, deltaRotation, deltaScale);
+            collider.rotation += ClampRotationDelta(glm::vec3(deltaRotation[0], deltaRotation[1], deltaRotation[2]));
+        }
+        else if (operation == ImGuizmo::SCALE)
+        {
+            collider.scale = glm::max(glm::vec3(scale[0], scale[1], scale[2]), glm::vec3(0.1f));
+        }
     }
 }
 
@@ -554,18 +603,19 @@ void CollisionEditor::ApplyGizmo()
         snapValues[2] = scaleSnap;
     }
 
+    glm::mat4 deltaMatrix(1.0f);
     ImGuizmo::Manipulate(
         &viewportState.request.view[0][0],
         &viewportState.request.projection[0][0],
         gizmoOperation,
         gizmoMode,
         &matrix[0][0],
-        nullptr,
+        &deltaMatrix[0][0],
         useSnap ? snapValues : nullptr);
 
     if (ImGuizmo::IsUsing())
     {
-        ApplyGizmoMatrix(*selectedCollider, matrix);
+        ApplyGizmoMatrix(*selectedCollider, matrix, deltaMatrix, gizmoOperation);
         dirty = true;
     }
 }

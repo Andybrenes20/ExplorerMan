@@ -15,6 +15,7 @@ uniform float cloudSpeed;
 uniform float cloudCrispiness;
 uniform float cloudCurliness;
 uniform float cloudDensity;
+uniform float rainIntensity;
 
 const bool useProceduralClouds = true;
 const bool useRepoInspiredDaySky = true;
@@ -76,14 +77,16 @@ void main()
 
 	vec3 dir = normalize(TexCoords);
 	vec3 skySunDir = normalize(sunDir);
+	float rain = clamp(rainIntensity, 0.0, 1.0);
 	vec4 proceduralDayColor = dayColor;
 	vec4 proceduralNightColor = nightColor;
+	float goldenHour = 0.0;
 
 	if (useRepoInspiredDaySky)
 	{
 		float highSunBlend = remap01(sunHeight, 0.18, 0.82);
-		vec3 highSunTop = vec3(0.5, 0.7, 0.8) * 1.05;
-		vec3 highSunBottom = vec3(0.9, 0.9, 0.95);
+		vec3 highSunTop = vec3(0.42, 0.62, 0.84);
+		vec3 highSunBottom = vec3(0.76, 0.83, 0.90);
 		vec3 sunsetTop = vec3(133.0, 158.0, 214.0) / 255.0;
 		vec3 sunsetBottom = vec3(241.0, 161.0, 161.0) / 255.0;
 
@@ -91,6 +94,21 @@ void main()
 		vec3 skyBottom = mix(sunsetBottom, highSunBottom, highSunBlend);
 		float gradient = clamp(1.0 - exp(8.5 - 17.0 * clamp(dir.y * 0.5 + 0.5, 0.0, 1.0)), 0.0, 1.0);
 		vec3 proceduralSky = mix(skyBottom, skyTop, gradient);
+		float sunGlow = pow(max(dot(dir, skySunDir), 0.0), 24.0) * smoothstep(-0.12, 0.45, sunHeight) * (1.0 - rain * 0.86);
+		float horizonHaze = 1.0 - smoothstep(0.02, 0.34, abs(dir.y));
+		float zenith = smoothstep(0.62, 1.0, dir.y * 0.5 + 0.5);
+		float duskWarmth = (1.0 - highSunBlend) * smoothstep(-0.16, 0.24, sunHeight);
+		goldenHour = (1.0 - highSunBlend) * smoothstep(0.10, 0.68, sunHeight) * (1.0 - rain * 0.65);
+		float wideSunGlow = pow(max(dot(dir, skySunDir), 0.0), 4.0) * smoothstep(-0.10, 0.55, sunHeight) * (1.0 - rain * 0.80);
+		proceduralSky += mix(vec3(1.0, 0.58, 0.36), vec3(1.0, 0.80, 0.52), highSunBlend) * sunGlow * 0.32;
+		proceduralSky += vec3(0.26, 0.12, 0.065) * horizonHaze * duskWarmth * 0.36;
+		proceduralSky += vec3(1.0, 0.68, 0.32) * wideSunGlow * goldenHour * 0.26;
+		proceduralSky = mix(proceduralSky, vec3(0.95, 0.77, 0.52), horizonHaze * goldenHour * 0.48);
+		proceduralSky = mix(proceduralSky, vec3(0.68, 0.80, 0.92), horizonHaze * 0.08 * highSunBlend);
+		proceduralSky = mix(proceduralSky, proceduralSky * vec3(0.82, 0.96, 1.22), zenith * highSunBlend * 0.44);
+		vec3 stormSky = mix(vec3(0.18, 0.21, 0.26), vec3(0.31, 0.36, 0.43), clamp(dir.y * 0.5 + 0.5, 0.0, 1.0));
+		stormSky += vec3(0.05, 0.055, 0.06) * horizonHaze;
+		proceduralSky = mix(proceduralSky, stormSky, rain * 0.76);
 		proceduralDayColor = vec4(proceduralSky, 1.0);
 	}
 
@@ -105,24 +123,32 @@ void main()
 	float stars = (denseStars + hazeStars) * twinkle * 1.22;
 	float starVisibility = smoothstep(-0.02, -0.48, sunHeight) * smoothstep(-0.28, 0.18, dir.y);
 
-	vec3 nightBase = mix(vec3(0.008, 0.014, 0.038), vec3(0.05, 0.07, 0.13), clamp(dir.y * 0.5 + 0.5, 0.0, 1.0));
+	float nightAmount = remap01(-sunHeight, 0.08, 0.92) * (1.0 - rain * 0.55);
+	vec3 nightBase = mix(vec3(0.006, 0.012, 0.036), vec3(0.045, 0.070, 0.145), clamp(dir.y * 0.5 + 0.5, 0.0, 1.0));
 	float nightNebula = fbm(starUv * 18.0 + vec2(0.0, time * 0.00008));
-	nightBase += vec3(0.03, 0.035, 0.06) * smoothstep(0.52, 0.88, nightNebula) * 0.45;
+	float upperNight = smoothstep(0.36, 1.0, dir.y * 0.5 + 0.5);
+	vec3 moonDir = normalize(-skySunDir + vec3(0.0, 0.18, 0.0));
+	float moonDot = max(dot(dir, moonDir), 0.0);
+	float moonAura = pow(moonDot, 7.0) * nightAmount;
+	float moonCore = pow(moonDot, 150.0) * nightAmount;
+	float horizonNightGlow = (1.0 - smoothstep(0.0, 0.32, abs(dir.y))) * nightAmount;
+	nightBase += vec3(0.030, 0.040, 0.075) * smoothstep(0.52, 0.88, nightNebula) * 0.60 * nightAmount;
+	nightBase += vec3(0.070, 0.105, 0.220) * moonAura * 0.28;
+	nightBase += vec3(0.78, 0.86, 1.0) * moonCore * 0.85;
+	nightBase += vec3(0.040, 0.055, 0.110) * horizonNightGlow;
+	nightBase = mix(nightBase, nightBase * vec3(0.90, 0.98, 1.18), upperNight * nightAmount * 0.25);
 	nightBase += vec3(1.0, 0.98, 0.96) * stars * starVisibility * 1.10;
 	proceduralNightColor = vec4(nightBase, 1.0);
 
 	vec4 skyColor = mix(proceduralDayColor, proceduralNightColor, clamp(blendFactor, 0.0, 1.0));
-
-	// During dusk, push the warm tint upward so it reads above the city silhouette.
-	float duskFactor = smoothstep(-0.10, 0.20, sunHeight) * (1.0 - smoothstep(0.28, 0.72, sunHeight));
-	float upperSky = smoothstep(0.18, 1.0, dir.y * 0.5 + 0.5);
-	float lowerSky = 1.0 - upperSky;
-	skyColor.rgb = mix(skyColor.rgb, skyColor.rgb * vec3(0.90, 0.94, 1.00), lowerSky * duskFactor * 0.35);
-	skyColor.rgb += vec3(0.16, 0.05, 0.03) * duskFactor * pow(upperSky, 3.0);
-	skyColor.rgb += vec3(0.08, 0.02, 0.01) * duskFactor * pow(upperSky, 1.6) * 0.55;
+	float cityLightDome = (1.0 - smoothstep(0.0, 0.28, abs(dir.y))) * clamp(blendFactor, 0.0, 1.0);
+	skyColor.rgb += vec3(0.16, 0.08, 0.045) * cityLightDome * 0.30;
+	skyColor.rgb += vec3(0.025, 0.040, 0.090) * cityLightDome * nightAmount * 0.45;
+	skyColor.rgb = mix(skyColor.rgb, vec3(0.10, 0.12, 0.16), rain * clamp(blendFactor, 0.0, 1.0) * 0.52);
 
 	float cloudBand = smoothstep(-0.12, 0.46, dir.y) * (1.0 - smoothstep(0.90, 0.995, dir.y));
 	float dayCloudVisibility = (1.0 - clamp(blendFactor, 0.0, 1.0) * 0.75) * smoothstep(-0.26, 0.20, sunHeight);
+	dayCloudVisibility = max(dayCloudVisibility, rain * 0.82);
 
 	if (useProceduralClouds && dayCloudVisibility > 0.001 && cloudBand > 0.0)
 	{
@@ -156,15 +182,21 @@ void main()
 		float warmSun = remap01(sunHeight, -0.02, 0.30);
 		float highSun = remap01(sunHeight, 0.25, 0.85);
 
-		vec3 highlightColor = mix(vec3(1.0, 0.86, 0.72), vec3(0.98, 0.98, 0.94), highSun);
-		vec3 bodyColor = mix(vec3(0.82, 0.84, 0.90), vec3(0.95, 0.96, 0.98), highSun);
+		vec3 highlightColor = mix(vec3(1.0, 0.82, 0.66), vec3(0.98, 0.99, 0.96), highSun);
+		vec3 bodyColor = mix(vec3(0.70, 0.74, 0.84), vec3(0.84, 0.88, 0.92), highSun);
 		vec3 shadowColor = mix(vec3(97.0, 98.0, 120.0) / 255.0, vec3(65.0, 70.0, 80.0) * (1.5 / 255.0), highSun);
+		float goldenCloud = goldenHour * (0.45 + lightFacing * 0.55);
+		highlightColor = mix(highlightColor, vec3(1.0, 0.78, 0.48), goldenCloud * 0.65);
+		bodyColor = mix(bodyColor, vec3(0.86, 0.74, 0.58), goldenHour * 0.35);
+		highlightColor = mix(highlightColor, vec3(0.48, 0.53, 0.58), rain * 0.80);
+		bodyColor = mix(bodyColor, vec3(0.30, 0.35, 0.40), rain * 0.88);
+		shadowColor = mix(shadowColor, vec3(0.13, 0.16, 0.20), rain * 0.92);
 
 		float selfShadow = remap01(cloudShape, coverage + 0.01, coverage + 0.14);
 		vec3 cloudColor = mix(shadowColor, bodyColor, selfShadow);
 		cloudColor = mix(cloudColor, highlightColor, cloudRim * (0.25 + lightFacing * 0.75) * (0.45 + warmSun * 0.55));
 
-		float cloudOpacity = cloudMask * (0.88 + cloudCore * 0.24) * dayCloudVisibility * densityBoost;
+		float cloudOpacity = cloudMask * (0.92 + cloudCore * 0.26 + rain * 0.34) * dayCloudVisibility * densityBoost;
 		cloudOpacity = clamp(cloudOpacity, 0.0, 1.0);
 		skyColor.rgb = mix(skyColor.rgb, cloudColor, cloudOpacity);
 		skyColor.rgb += highlightColor * cloudRim * lightFacing * 0.28 * dayCloudVisibility;

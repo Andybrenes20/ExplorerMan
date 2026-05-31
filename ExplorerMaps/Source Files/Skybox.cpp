@@ -168,6 +168,7 @@ void Skybox::Draw(const Camera& camera, float FOVdeg, float nearPlane, float far
 	glUniform1f(glGetUniformLocation(shader.ID, "cloudCrispiness"), cloudSettings.crispiness);
 	glUniform1f(glGetUniformLocation(shader.ID, "cloudCurliness"), cloudSettings.curliness);
 	glUniform1f(glGetUniformLocation(shader.ID, "cloudDensity"), cloudSettings.density);
+	glUniform1f(glGetUniformLocation(shader.ID, "rainIntensity"), cloudSettings.rainIntensity);
 
 	glBindVertexArray(VAO);
 	glActiveTexture(GL_TEXTURE0);

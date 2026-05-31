@@ -17,6 +17,7 @@ struct SkyCloudSettings
 	float crispiness = 0.92f;
 	float curliness = 0.92f;
 	float density = 1.18f;
+	float rainIntensity = 0.0f;
 };
 
 class Skybox

@@ -55,8 +55,11 @@ const float cameraCollisionRadius = 6.0f;
 // --- Opciones ----------------w--------------------------
 const bool showCoordinatesInWindowTitle = true;
 const bool useFastRenderMode = false;
-// CICLO MUY RAPIDO PARA VIDEO
-const float dayNightSpeed = 0.20f;
+const glm::vec3 blockedZoneMin = glm::vec3(240.0f, -260.0f, 360.0f);
+const glm::vec3 blockedZoneMax = glm::vec3(310.0f, -150.0f, 435.0f);
+
+// Ciclo base cinematografico: desde F3 se puede acelerar para pruebas.
+const float dayNightSpeed = 0.08f;
 const bool useProceduralDaySkybox = true;
 
 const float SUN_SIZE = 50.0f;
@@ -686,8 +689,8 @@ void ApplyEnvironmentMode(EnvironmentMode mode, float manualTimeOfDay, float& su
 {
     if (mode == EnvironmentMode::Day)
     {
-        sunAngleRad = 1.5708f;
-        sunHeight = 1.0f;
+        sunAngleRad = 0.58f;
+        sunHeight = std::sin(sunAngleRad);
     }
     else if (mode == EnvironmentMode::Night)
     {
@@ -719,7 +722,7 @@ std::string BuildEnvironmentTitle(const EnvironmentMenuState& menu, EnvironmentM
     {
         title << "Ambiente: " << EnvironmentModeName(mode)
               << " | Hora: " << FormatTimeOfDay(manualTimeOfDay)
-              << " | Esc: menu | F3: panel cielo | X:" << normPos.x << " Y:" << normPos.y << " Z:" << normPos.z;
+              << " | Esc: menu | F3: clima | R: lluvia | X:" << normPos.x << " Y:" << normPos.y << " Z:" << normPos.z;
     }
 
     return title.str();
@@ -1399,13 +1402,13 @@ void DrawLoadingScreenImGui()
     ImGui::End();
 }
 
-void DrawSkyControlImGui(SkyPanelState& panel, EnvironmentMode& mode, float& manualTimeOfDay, SkyCloudSettings& cloudSettings)
+void DrawSkyControlImGui(SkyPanelState& panel, EnvironmentMode& mode, float& manualTimeOfDay, SkyCloudSettings& cloudSettings, float& cycleSpeedMultiplier)
 {
     if (!panel.open)
         return;
 
     ImGui::SetNextWindowPos(ImVec2(48.0f, 64.0f), ImGuiCond_Always);
-    ImGui::SetNextWindowSize(ImVec2(310.0f, 520.0f), ImGuiCond_Always);
+    ImGui::SetNextWindowSize(ImVec2(330.0f, 610.0f), ImGuiCond_Always);
     ImGuiWindowFlags flags = ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse;
 
     bool open = panel.open;
@@ -1431,11 +1434,13 @@ void DrawSkyControlImGui(SkyPanelState& panel, EnvironmentMode& mode, float& man
         mode = EnvironmentMode::Manual;
     }
 
+    ImGui::SliderFloat("Auto speed", &cycleSpeedMultiplier, 0.25f, 8.0f, "%.2fx");
     ImGui::SliderFloat("Coverage", &cloudSettings.coverage, 0.20f, 1.20f);
     ImGui::SliderFloat("Speed", &cloudSettings.speed, 0.10f, 3.50f);
     ImGui::SliderFloat("Crispiness", &cloudSettings.crispiness, 0.35f, 2.50f);
     ImGui::SliderFloat("Curliness", &cloudSettings.curliness, 0.10f, 2.50f);
     ImGui::SliderFloat("Density", &cloudSettings.density, 0.20f, 1.60f);
+    ImGui::SliderFloat("Rain", &cloudSettings.rainIntensity, 0.0f, 1.0f, "%.2f");
 
     if (ImGui::Button("Default clouds"))
     {
@@ -1444,6 +1449,7 @@ void DrawSkyControlImGui(SkyPanelState& panel, EnvironmentMode& mode, float& man
         cloudSettings.crispiness = 0.92f;
         cloudSettings.curliness = 0.92f;
         cloudSettings.density = 1.18f;
+        cloudSettings.rainIntensity = 0.0f;
     }
     ImGui::SameLine();
     if (ImGui::Button("Heavy clouds"))
@@ -1454,8 +1460,28 @@ void DrawSkyControlImGui(SkyPanelState& panel, EnvironmentMode& mode, float& man
         cloudSettings.curliness = 1.18f;
         cloudSettings.density = 1.48f;
     }
+    if (ImGui::Button("Rainy city"))
+    {
+        cloudSettings.coverage = 1.16f;
+        cloudSettings.speed = 2.15f;
+        cloudSettings.crispiness = 0.72f;
+        cloudSettings.curliness = 1.42f;
+        cloudSettings.density = 1.60f;
+        cloudSettings.rainIntensity = 0.78f;
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Storm"))
+    {
+        cloudSettings.coverage = 1.20f;
+        cloudSettings.speed = 2.85f;
+        cloudSettings.crispiness = 0.62f;
+        cloudSettings.curliness = 1.80f;
+        cloudSettings.density = 1.60f;
+        cloudSettings.rainIntensity = 1.0f;
+    }
 
     ImGui::Text("Current time: %s", FormatTimeOfDay(manualTimeOfDay).c_str());
+    ImGui::Text("Rain shortcut: R");
     ImGui::Text("Sky model: procedural repo-like");
     ImGui::Separator();
 
@@ -1729,45 +1755,14 @@ void UploadLampLightUniforms(Shader& shaderProgram, const std::vector<Light>& li
     glUniform1fv(glGetUniformLocation(shaderProgram.ID, "lampLightIntensities[0]"), static_cast<GLsizei>(maxLampLightCount), lightIntensities.data());
 }
 
-void UploadDirectionalLightUniforms(
-    Shader& shaderProgram,
-    const glm::vec3& sunDirection,
-    const glm::vec3& sunColor,
-    float sunIntensity,
-    const glm::vec3& moonDirection,
-    const glm::vec3& moonColor,
-    float moonIntensity,
-    const glm::vec3& ambientColor,
-    float sunHeight,
-    float dayFactor,
-    float nightFactor)
+void DrawLampGlowMarkers(const std::vector<Light>& lights, Shader& sphereShader, GLuint lampGlowVAO, float nightFactor, float rainIntensity)
 {
-    glUniform3f(glGetUniformLocation(shaderProgram.ID, "sunDirection"), sunDirection.x, sunDirection.y, sunDirection.z);
-    glUniform3f(glGetUniformLocation(shaderProgram.ID, "sunColor"), sunColor.x, sunColor.y, sunColor.z);
-    glUniform1f(glGetUniformLocation(shaderProgram.ID, "sunIntensity"), sunIntensity);
-    glUniform3f(glGetUniformLocation(shaderProgram.ID, "moonDirection"), moonDirection.x, moonDirection.y, moonDirection.z);
-    glUniform3f(glGetUniformLocation(shaderProgram.ID, "moonColor"), moonColor.x, moonColor.y, moonColor.z);
-    glUniform1f(glGetUniformLocation(shaderProgram.ID, "moonIntensity"), moonIntensity);
-    glUniform3f(glGetUniformLocation(shaderProgram.ID, "ambientColor"), ambientColor.x, ambientColor.y, ambientColor.z);
-    glUniform1f(glGetUniformLocation(shaderProgram.ID, "sunHeight"), sunHeight);
-    glUniform1f(glGetUniformLocation(shaderProgram.ID, "dayFactor"), dayFactor);
-    glUniform1f(glGetUniformLocation(shaderProgram.ID, "nightFactor"), nightFactor);
-}
-
-void DrawLampGlowMarkers(const std::vector<Light>& lights, Shader& sphereShader, GLuint lampGlowVAO, float nightFactor)
-{
-    glBindVertexArray(lampGlowVAO);
-    for (const Light& light : lights)
-    {
-        const glm::mat4 lampModel =
-            glm::translate(glm::mat4(1.0f), light.position) *
-            glm::scale(glm::mat4(1.0f), glm::vec3(std::max(lampCoreSize, light.helperSize * 0.04f)));
-
-        glUniform3f(glGetUniformLocation(sphereShader.ID, "color"), light.color.r, light.color.g, light.color.b);
-        glUniform1f(glGetUniformLocation(sphereShader.ID, "alpha"), glm::clamp(nightFactor * light.intensity * 0.55f, 0.0f, 1.0f));
-        glUniformMatrix4fv(glGetUniformLocation(sphereShader.ID, "model"), 1, GL_FALSE, glm::value_ptr(lampModel));
-        glDrawElements(GL_TRIANGLES, lampGlowIndexCount, GL_UNSIGNED_INT, 0);
-    }
+    (void)lights;
+    (void)sphereShader;
+    (void)lampGlowVAO;
+    (void)nightFactor;
+    (void)rainIntensity;
+    // Point lights should illuminate the scene, not appear as large helper orbs during gameplay.
 }
 
 void DrawInteriorLightCubes(const std::vector<Light>& lights, Shader& lightShader, Camera& camera, GLuint cubeVAO, const glm::vec3& dirLightDirection)
@@ -1799,6 +1794,31 @@ void DrawInteriorLightCubes(const std::vector<Light>& lights, Shader& lightShade
     }
 
     glBindVertexArray(0);
+}
+
+void DrawRainOverlay(Shader& rainShader, GLuint rainVAO, float rainIntensity, float nightFactor, float currentFrame)
+{
+    rainIntensity = glm::clamp(rainIntensity, 0.0f, 1.0f);
+    nightFactor = glm::clamp(nightFactor, 0.0f, 1.0f);
+    if (rainIntensity <= 0.01f && nightFactor <= 0.08f)
+        return;
+
+    glDisable(GL_DEPTH_TEST);
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+    rainShader.Activate();
+    glUniform1f(glGetUniformLocation(rainShader.ID, "time"), currentFrame);
+    glUniform1f(glGetUniformLocation(rainShader.ID, "rainIntensity"), rainIntensity);
+    glUniform1f(glGetUniformLocation(rainShader.ID, "nightFactor"), nightFactor);
+    glUniform2f(glGetUniformLocation(rainShader.ID, "resolution"), static_cast<float>(width), static_cast<float>(height));
+
+    glBindVertexArray(rainVAO);
+    glDrawArrays(GL_TRIANGLES, 0, 6);
+    glBindVertexArray(0);
+
+    glDisable(GL_BLEND);
+    glEnable(GL_DEPTH_TEST);
 }
 
 int main(int argc, char** argv)
@@ -1877,6 +1897,7 @@ int main(int argc, char** argv)
     Shader shaderProgram("Shaders/default.vert", "Shaders/default.frag");
     Shader lightShader("Shaders/light.vert", "Shaders/light.frag");
     Shader sphereShader("Shaders/sphere.vert", "Shaders/sphere.frag");
+    Shader rainShader("Shaders/screen.vert", "Shaders/rain_overlay.frag");
     Texture sunTexture("Texturas/sun.jpg", "diffuse", 0);
     Texture moonTexture("Texturas/moon.jpg", "diffuse", 0);
     sphereShader.Activate();
@@ -1886,10 +1907,31 @@ int main(int argc, char** argv)
     GLuint moonVAO, moonVBO, moonEBO;
     GLuint lampGlowVAO, lampGlowVBO, lampGlowEBO;
     GLuint lightCubeVAO, lightCubeVBO;
+    GLuint rainVAO, rainVBO;
     createSphere(sunVAO, sunVBO, sunEBO, 48, SUN_SIZE);
     createSphere(moonVAO, moonVBO, moonEBO, 36, MOON_SIZE);
     createSphere(lampGlowVAO, lampGlowVBO, lampGlowEBO, lampGlowSectors, lampGlowSize);
     createCube(lightCubeVAO, lightCubeVBO);
+
+    const float rainQuadVertices[] =
+    {
+        -1.0f, -1.0f, 0.0f, 0.0f,
+         1.0f, -1.0f, 1.0f, 0.0f,
+         1.0f,  1.0f, 1.0f, 1.0f,
+        -1.0f, -1.0f, 0.0f, 0.0f,
+         1.0f,  1.0f, 1.0f, 1.0f,
+        -1.0f,  1.0f, 0.0f, 1.0f
+    };
+    glGenVertexArrays(1, &rainVAO);
+    glGenBuffers(1, &rainVBO);
+    glBindVertexArray(rainVAO);
+    glBindBuffer(GL_ARRAY_BUFFER, rainVBO);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(rainQuadVertices), rainQuadVertices, GL_STATIC_DRAW);
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)0);
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)(2 * sizeof(float)));
+    glEnableVertexAttribArray(1);
+    glBindVertexArray(0);
 
     EditorSceneData sceneData;
     Entity cityEntity;
@@ -1954,6 +1996,9 @@ int main(int argc, char** argv)
     float nightFactor = 0.0f;
     float manualTimeOfDay = 0.18f;
     SkyCloudSettings cloudSettings;
+    float cycleSpeedMultiplier = 1.0f;
+    float smoothedRainIntensity = 0.0f;
+    bool rainToggleWasDown = false;
     glm::vec3 sunPos(0.0f);
     glm::vec3 moonPos(0.0f);
     bool isDay = true;
@@ -1965,12 +2010,6 @@ int main(int argc, char** argv)
     float specularIntensity = 0.5f;
     glm::vec4 lightColor(1.0f);
     glm::vec3 skySunDirection(0.0f, 1.0f, 0.0f);
-    glm::vec3 sunDirection(0.0f, -1.0f, 0.0f);
-    glm::vec3 moonDirection(0.0f, 1.0f, 0.0f);
-    glm::vec3 sunLightColor(1.0f);
-    float sunLightIntensity = 1.0f;
-    glm::vec3 moonLightColor(1.0f);
-    float moonLightIntensity = 1.0f;
     ColliderManager colliderManager;
     CollisionSystem collisionSystem;
     DrivableCarState car;
@@ -1999,18 +2038,15 @@ int main(int argc, char** argv)
         glUniform3f(glGetUniformLocation(shaderProgram.ID, "lightPos"), mainLightPos.x, mainLightPos.y, mainLightPos.z);
         glUniform3f(glGetUniformLocation(shaderProgram.ID, "moonPos"), moonPos.x, moonPos.y, moonPos.z);
         glUniform3f(glGetUniformLocation(shaderProgram.ID, "viewPos"), request.cameraPosition.x, request.cameraPosition.y, request.cameraPosition.z);
-        UploadDirectionalLightUniforms(
-            shaderProgram,
-            sunDirection,
-            sunLightColor,
-            sunLightIntensity,
-            moonDirection,
-            moonLightColor,
-            moonLightIntensity,
-            ambientColor,
-            sunHeight,
-            dayFactor,
-            nightFactor);
+        glUniform3f(glGetUniformLocation(shaderProgram.ID, "ambientColor"), ambientColor.x, ambientColor.y, ambientColor.z);
+        glUniform1f(glGetUniformLocation(shaderProgram.ID, "time"), lastFrame);
+        glUniform1f(glGetUniformLocation(shaderProgram.ID, "dayFactor"), dayFactor);
+        glUniform1f(glGetUniformLocation(shaderProgram.ID, "nightFactor"), nightFactor);
+        glUniform1f(glGetUniformLocation(shaderProgram.ID, "isDay"), isDay ? 1.0f : 0.0f);
+        glUniform1f(glGetUniformLocation(shaderProgram.ID, "diffuseIntensity"), diffuseIntensity);
+        glUniform1f(glGetUniformLocation(shaderProgram.ID, "specularIntensity"), specularIntensity);
+        glUniform1f(glGetUniformLocation(shaderProgram.ID, "sunHeight"), sunHeight);
+        glUniform1f(glGetUniformLocation(shaderProgram.ID, "rainIntensity"), smoothedRainIntensity);
         UploadLampLightUniforms(shaderProgram, sceneData.lights);
 
         for (const Entity& entity : sceneData.entities)
@@ -2053,6 +2089,7 @@ int main(int argc, char** argv)
         glUniform1f(glGetUniformLocation(shaderProgram.ID, "diffuseIntensity"), diffuseIntensity);
         glUniform1f(glGetUniformLocation(shaderProgram.ID, "specularIntensity"), specularIntensity);
         glUniform1f(glGetUniformLocation(shaderProgram.ID, "sunHeight"), sunHeight);
+        glUniform1f(glGetUniformLocation(shaderProgram.ID, "rainIntensity"), smoothedRainIntensity);
         UploadLampLightUniforms(shaderProgram, sceneData.lights);
 
         for (const Entity& entity : sceneData.entities)
@@ -2182,6 +2219,14 @@ int main(int argc, char** argv)
             HandleEnvironmentMenu(window, environmentMenu, environmentMode, shouldExit);
             HandleSkyPanel(window, skyPanel, environmentMode, manualTimeOfDay);
         }
+
+        const bool rainToggleDown = glfwGetKey(window, GLFW_KEY_R) == GLFW_PRESS;
+        if (!environmentMenu.open && !skyPanel.open && !editor.IsActive() && !collisionEditor.IsActive() && rainToggleDown && !rainToggleWasDown)
+        {
+            cloudSettings.rainIntensity = cloudSettings.rainIntensity > 0.05f ? 0.0f : 0.78f;
+        }
+        rainToggleWasDown = rainToggleDown;
+
         if (shouldExit)
         {
             ImGui::Render();
@@ -2210,7 +2255,10 @@ int main(int argc, char** argv)
             camera.firstClick = true;
         }
 
-        timeOfDayAngle = currentFrame * dayNightSpeed;
+        const float rainTarget = glm::clamp(cloudSettings.rainIntensity, 0.0f, 1.0f);
+        smoothedRainIntensity = glm::mix(smoothedRainIntensity, rainTarget, 1.0f - std::exp(-deltaTime * 2.8f));
+
+        timeOfDayAngle = currentFrame * dayNightSpeed * cycleSpeedMultiplier;
         float sunAngleRad = timeOfDayAngle;
 
         sunHeight = std::sin(sunAngleRad);
@@ -2220,8 +2268,16 @@ int main(int argc, char** argv)
         const float skyBlendFactor = environmentMode == EnvironmentMode::Day
             ? 0.0f
             : (environmentMode == EnvironmentMode::Night ? 1.0f : ComputeSkyBlendFactor(sunHeight));
-        skybox.SetBlendFactor(skyBlendFactor);
-        skybox.SetCloudSettings(cloudSettings);
+        skybox.SetBlendFactor(glm::clamp(skyBlendFactor + smoothedRainIntensity * 0.18f, 0.0f, 1.0f));
+
+        SkyCloudSettings effectiveCloudSettings = cloudSettings;
+        effectiveCloudSettings.coverage = glm::mix(effectiveCloudSettings.coverage, 1.20f, smoothedRainIntensity);
+        effectiveCloudSettings.speed = glm::mix(effectiveCloudSettings.speed, 2.25f, smoothedRainIntensity);
+        effectiveCloudSettings.crispiness = glm::mix(effectiveCloudSettings.crispiness, 0.62f, smoothedRainIntensity);
+        effectiveCloudSettings.curliness = glm::mix(effectiveCloudSettings.curliness, 1.65f, smoothedRainIntensity);
+        effectiveCloudSettings.density = glm::mix(effectiveCloudSettings.density, 1.60f, smoothedRainIntensity);
+        effectiveCloudSettings.rainIntensity = smoothedRainIntensity;
+        skybox.SetCloudSettings(effectiveCloudSettings);
 
         dayFactor = glm::clamp(sunHeight + 0.2f, 0.05f, 1.0f);
         nightFactor = glm::clamp(-sunHeight + 0.1f, 0.0f, 1.0f);
@@ -2263,47 +2319,45 @@ int main(int argc, char** argv)
             );
         }
 
-        const float dayLightBlend = glm::smoothstep(-0.26f, 0.34f, sunHeight);
-        const float sunWarmBlend = glm::smoothstep(-0.10f, 0.28f, sunHeight);
-        const float sunNoonBlend = glm::smoothstep(0.22f, 0.82f, sunHeight);
-        const float sunPresence = glm::smoothstep(-0.18f, 0.78f, sunHeight);
-        const float moonPresence = glm::smoothstep(0.20f, -0.80f, sunHeight);
+        const float dayLightBlend = glm::smoothstep(-0.14f, 0.18f, sunHeight);
+        const float sunWarmBlend = glm::smoothstep(-0.04f, 0.32f, sunHeight);
+        const float sunNoonBlend = glm::smoothstep(0.18f, 0.82f, sunHeight);
+        const float sunPresence = glm::smoothstep(-0.08f, 0.75f, sunHeight);
+        const float moonPresence = glm::smoothstep(0.08f, -0.88f, sunHeight);
         const float moonHeight = glm::clamp(std::abs(moonVertical), 0.0f, 1.0f);
-        sunDirection = glm::normalize(-sunPos);
-        moonDirection = glm::normalize(-moonPos);
 
         const glm::vec3 sunWarmColor = glm::mix(
-            glm::vec3(0.92f, 0.46f, 0.28f),
-            glm::vec3(1.0f, 0.76f, 0.56f),
+            glm::vec3(1.0f, 0.50f, 0.22f),
+            glm::vec3(1.0f, 0.72f, 0.46f),
             sunWarmBlend
         );
-        sunLightColor = glm::mix(
+        const glm::vec3 sunLightColor = glm::mix(
             sunWarmColor,
-            glm::vec3(1.0f, 0.98f, 0.92f),
+            glm::vec3(1.0f, 0.92f, 0.78f),
             sunNoonBlend
         );
-        sunLightIntensity = glm::mix(0.08f, 1.18f, sunPresence);
+        const float sunLightIntensity = glm::mix(0.28f, 1.24f, sunPresence);
         const glm::vec3 sunAmbientColor = glm::mix(
             glm::vec3(0.08f, 0.07f, 0.10f),
-            glm::vec3(0.35f, 0.38f, 0.42f),
+            glm::vec3(0.42f, 0.38f, 0.31f),
             glm::smoothstep(-0.02f, 0.72f, sunHeight)
         );
-        const float sunDiffuseIntensity = glm::mix(0.12f, 1.0f, sunPresence);
-        const float sunSpecularIntensity = glm::mix(0.08f, 0.60f, sunPresence);
+        const float sunDiffuseIntensity = glm::mix(0.22f, 1.0f, sunPresence);
+        const float sunSpecularIntensity = glm::mix(0.12f, 0.60f, sunPresence);
 
-        moonLightColor = glm::mix(
+        const glm::vec3 moonLightColor = glm::mix(
             glm::vec3(0.50f, 0.56f, 0.74f),
             glm::vec3(0.65f, 0.70f, 0.90f),
             moonHeight
         );
-        moonLightIntensity = glm::mix(0.18f, 0.34f, moonPresence * moonHeight);
+        const float moonLightIntensity = glm::mix(0.14f, 0.34f, moonPresence * moonHeight);
         const glm::vec3 moonAmbientColor = glm::mix(
             glm::vec3(0.05f, 0.06f, 0.08f),
             glm::vec3(0.08f, 0.10f, 0.15f),
             glm::smoothstep(-0.90f, -0.10f, sunHeight)
         );
-        const float moonDiffuseIntensity = glm::mix(0.18f, 0.35f, moonPresence);
-        const float moonSpecularIntensity = glm::mix(0.06f, 0.15f, moonPresence);
+        const float moonDiffuseIntensity = glm::mix(0.22f, 0.35f, moonPresence);
+        const float moonSpecularIntensity = glm::mix(0.10f, 0.15f, moonPresence);
 
         mainLightPos = glm::mix(moonPos, sunPos, dayLightBlend);
         skySunDirection = glm::normalize(glm::vec3(
@@ -2317,15 +2371,22 @@ int main(int argc, char** argv)
         diffuseIntensity = glm::mix(moonDiffuseIntensity, sunDiffuseIntensity, dayLightBlend);
         specularIntensity = glm::mix(moonSpecularIntensity, sunSpecularIntensity, dayLightBlend);
 
+        mainLightColor = glm::mix(mainLightColor, glm::vec3(0.58f, 0.66f, 0.78f), smoothedRainIntensity * 0.45f);
+        mainLightIntensity *= glm::mix(1.0f, 0.48f, smoothedRainIntensity);
+        ambientColor = glm::mix(ambientColor, glm::vec3(0.15f, 0.18f, 0.22f), smoothedRainIntensity * 0.70f);
+        diffuseIntensity *= glm::mix(1.0f, 0.46f, smoothedRainIntensity);
+        specularIntensity = glm::mix(specularIntensity, glm::max(specularIntensity, 1.05f), smoothedRainIntensity);
+
         lightColor = glm::vec4(mainLightColor * mainLightIntensity, 1.0f);
 
         const glm::vec3 nightSkyColor(0.03f, 0.04f, 0.08f);
-        const glm::vec3 twilightSkyColor(0.72f, 0.44f, 0.42f);
-        const glm::vec3 daySkyColor(0.46f, 0.74f, 0.98f);
+        const glm::vec3 twilightSkyColor(0.96f, 0.62f, 0.34f);
+        const glm::vec3 daySkyColor(0.62f, 0.74f, 0.86f);
         const float twilightBlend = glm::smoothstep(-0.22f, 0.18f, sunHeight);
         const float dayBlend = glm::smoothstep(0.08f, 0.72f, sunHeight);
         glm::vec3 skyColor = glm::mix(nightSkyColor, twilightSkyColor, twilightBlend);
         skyColor = glm::mix(skyColor, daySkyColor, dayBlend);
+        skyColor = glm::mix(skyColor, glm::vec3(0.20f, 0.24f, 0.30f), smoothedRainIntensity * 0.68f);
 
         if (sunHeight < 0.15f)
         {
@@ -2363,13 +2424,7 @@ int main(int argc, char** argv)
             HandleCollisionEditorCameraControls(window, camera, deltaTime);
         }
 
-<<<<<<< Updated upstream
         if (!camera.flyMode && !car.driving)
-=======
-        const bool editingModeActive = editor.IsActive() || collisionEditor.IsActive();
-
-        if (!camera.flyMode && !editingModeActive)
->>>>>>> Stashed changes
         {
             glm::vec3 snapped;
             if (model.TrySnapToWalkableSurface(
@@ -2387,10 +2442,11 @@ int main(int argc, char** argv)
             else
                 camera.Position = prevPos;
 
-        }
-        else if (!camera.flyMode && editingModeActive)
-        {
-            // Editing mode can move outside the map bounds to place colliders.
+            const bool blocked =
+                camera.Position.x >= blockedZoneMin.x && camera.Position.x <= blockedZoneMax.x &&
+                camera.Position.y >= blockedZoneMin.y && camera.Position.y <= blockedZoneMax.y &&
+                camera.Position.z >= blockedZoneMin.z && camera.Position.z <= blockedZoneMax.z;
+            if (blocked) camera.Position = prevPos;
         }
 
         if (!car.driving)
@@ -2420,7 +2476,6 @@ int main(int argc, char** argv)
         glUniform4f(glGetUniformLocation(shaderProgram.ID, "lightColor"), lightColor.x, lightColor.y, lightColor.z, lightColor.w);
         glUniform3f(glGetUniformLocation(shaderProgram.ID, "lightPos"), mainLightPos.x, mainLightPos.y, mainLightPos.z);
         glUniform3f(glGetUniformLocation(shaderProgram.ID, "moonPos"), moonPos.x, moonPos.y, moonPos.z);
-<<<<<<< Updated upstream
         glUniform3f(glGetUniformLocation(shaderProgram.ID, "viewPos"), renderCamera.Position.x, renderCamera.Position.y, renderCamera.Position.z);
         glUniform3f(glGetUniformLocation(shaderProgram.ID, "ambientColor"), ambientColor.x, ambientColor.y, ambientColor.z);
         glUniform1f(glGetUniformLocation(shaderProgram.ID, "time"), currentFrame);
@@ -2430,21 +2485,7 @@ int main(int argc, char** argv)
         glUniform1f(glGetUniformLocation(shaderProgram.ID, "diffuseIntensity"), diffuseIntensity);
         glUniform1f(glGetUniformLocation(shaderProgram.ID, "specularIntensity"), specularIntensity);
         glUniform1f(glGetUniformLocation(shaderProgram.ID, "sunHeight"), sunHeight);
-=======
-        glUniform3f(glGetUniformLocation(shaderProgram.ID, "viewPos"), camera.Position.x, camera.Position.y, camera.Position.z);
-        UploadDirectionalLightUniforms(
-            shaderProgram,
-            sunDirection,
-            sunLightColor,
-            sunLightIntensity,
-            moonDirection,
-            moonLightColor,
-            moonLightIntensity,
-            ambientColor,
-            sunHeight,
-            dayFactor,
-            nightFactor);
->>>>>>> Stashed changes
+        glUniform1f(glGetUniformLocation(shaderProgram.ID, "rainIntensity"), smoothedRainIntensity);
         UploadLampLightUniforms(shaderProgram, sceneData.lights);
 
         for (const Entity& entity : sceneData.entities)
@@ -2455,7 +2496,7 @@ int main(int argc, char** argv)
 
         DrawInteriorLightCubes(sceneData.lights, lightShader, renderCamera, lightCubeVAO, skySunDirection);
 
-        if (nightFactor > 0.02f) {
+        if (nightFactor > 0.02f || smoothedRainIntensity > 0.08f) {
             sphereShader.Activate();
             glUniform1f(glGetUniformLocation(sphereShader.ID, "useTexture"), 0.0f);
             glUniform1f(glGetUniformLocation(sphereShader.ID, "unlit"), 1.0f);
@@ -2466,7 +2507,7 @@ int main(int argc, char** argv)
             glUniformMatrix4fv(glGetUniformLocation(sphereShader.ID, "view"), 1, GL_FALSE, glm::value_ptr(view));
             glUniformMatrix4fv(glGetUniformLocation(sphereShader.ID, "projection"), 1, GL_FALSE, glm::value_ptr(projection));
 
-            DrawLampGlowMarkers(sceneData.lights, sphereShader, lampGlowVAO, nightFactor);
+            DrawLampGlowMarkers(sceneData.lights, sphereShader, lampGlowVAO, nightFactor, smoothedRainIntensity);
             glUniform1f(glGetUniformLocation(sphereShader.ID, "unlit"), 0.0f);
             glUniform1f(glGetUniformLocation(sphereShader.ID, "alpha"), 1.0f);
         }
@@ -2518,10 +2559,12 @@ int main(int argc, char** argv)
         if (!useFastRenderMode)
             skybox.Draw(renderCamera, cameraFov, cameraNearPlane, cameraFarPlane, currentFrame, sunHeight, skySunDirection);
 
+        DrawRainOverlay(rainShader, rainVAO, smoothedRainIntensity, nightFactor, currentFrame);
+
         if (gameplayHudActive)
             DrawPlayerHud(interaction, walkAnimation, currentFrame, overlayShader, overlayVAO, overlayVBO);
         DrawEnvironmentMenu(environmentMenu, environmentMode, manualTimeOfDay, overlayShader, overlayVAO, overlayVBO);
-        DrawSkyControlImGui(skyPanel, environmentMode, manualTimeOfDay, cloudSettings);
+        DrawSkyControlImGui(skyPanel, environmentMode, manualTimeOfDay, cloudSettings, cycleSpeedMultiplier);
         editor.Render();
         collisionEditor.Render();
         ImGui::Render();
@@ -2551,6 +2594,8 @@ int main(int argc, char** argv)
     glDeleteBuffers(1, &lampGlowEBO);
     glDeleteVertexArrays(1, &lightCubeVAO);
     glDeleteBuffers(1, &lightCubeVBO);
+    glDeleteVertexArrays(1, &rainVAO);
+    glDeleteBuffers(1, &rainVBO);
     sunTexture.Delete();
     moonTexture.Delete();
     glDeleteVertexArrays(1, &overlayVAO);
